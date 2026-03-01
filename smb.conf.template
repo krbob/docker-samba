@@ -12,7 +12,7 @@
   security = user
   map to guest = Bad User
   guest account = samba
-
+${HOSTS_ALLOW_LINE}
   # Disable unnecessary services
   disable netbios = yes
   smb ports = 445

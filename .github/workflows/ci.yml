@@ -55,6 +55,21 @@ jobs:
           docker exec samba-test cat /tmp/downloaded.txt
           echo "File read/write OK"
 
+      - name: Smoke test - optional services start
+        run: |
+          docker compose -f docker-compose-test.yml down -v
+          docker run -d --name samba-discovery \
+            -e WSDD2_ENABLE=1 -e AVAHI_ENABLE=1 \
+            -v samba-discovery-data:/share \
+            local/samba:test
+          sleep 5
+          docker exec samba-discovery /command/s6-svstat /var/run/s6/legacy-services/wsdd 2>&1 | grep -q "^up" \
+            && echo "wsdd: up (correct)" || { echo "wsdd not running"; docker logs samba-discovery; exit 1; }
+          docker exec samba-discovery /command/s6-svstat /var/run/s6/legacy-services/avahi 2>&1 | grep -q "^up" \
+            && echo "avahi: up (correct)" || { echo "avahi not running"; docker logs samba-discovery; exit 1; }
+          docker rm -f samba-discovery
+          docker volume rm samba-discovery-data
+
       - name: Cleanup
         if: always()
         run: docker compose -f docker-compose-test.yml down -v

@@ -5,4 +5,13 @@ if [ "${WSDD2_ENABLE}" != "1" ]; then
   exit 0
 fi
 
-exec wsdd2
+WSDD_ARGS=""
+if [ -n "${ALLOWED_INTERFACES}" ]; then
+  IFS=','
+  for iface in ${ALLOWED_INTERFACES}; do
+    WSDD_ARGS="${WSDD_ARGS} -i ${iface}"
+  done
+  unset IFS
+fi
+
+exec wsdd2 ${WSDD_ARGS}

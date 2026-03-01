@@ -30,6 +30,11 @@ fi
 export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 
+# Optional: restrict Avahi to specific interfaces
+if [ -n "${ALLOWED_INTERFACES}" ]; then
+  sed -i "s/^#*allow-interfaces=.*/allow-interfaces=${ALLOWED_INTERFACES}/" /etc/avahi/avahi-daemon.conf
+fi
+
 # Validate configuration
 echo "--- Samba configuration ---"
 testparm -s /etc/samba/smb.conf 2>/dev/null

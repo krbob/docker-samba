@@ -1,4 +1,4 @@
-FROM debian:12.13-slim
+FROM debian:13.3-slim
 
 ARG S6_OVERLAY_VERSION=3.2.1.0
 

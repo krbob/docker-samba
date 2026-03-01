@@ -1,0 +1,87 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build and start container
+        run: docker compose -f docker-compose-test.yml up -d --build
+
+      - name: Wait for container to be healthy
+        run: |
+          echo "Waiting for Samba to start..."
+          for i in $(seq 1 30); do
+            if docker exec samba-test smbclient -N -L //127.0.0.1 2>&1 | grep -qi "disk"; then
+              echo "Samba is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Samba failed to start"
+          docker logs samba-test
+          exit 1
+
+      - name: Smoke test - list shares
+        run: |
+          OUTPUT=$(docker exec samba-test smbclient -N -L //127.0.0.1 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "public" || { echo "Share 'public' not found"; exit 1; }
+
+      - name: Smoke test - write and read file
+        run: |
+          docker exec samba-test smbclient -N //127.0.0.1/public \
+            -c 'put /etc/hostname test-file.txt' 2>&1 || true
+          OUTPUT=$(docker exec samba-test smbclient -N //127.0.0.1/public \
+            -c 'ls' 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "test-file.txt" || { echo "File not found"; exit 1; }
+
+      - name: Smoke test - verify file content
+        run: |
+          docker exec samba-test smbclient -N //127.0.0.1/public \
+            -c 'get test-file.txt /tmp/downloaded.txt' 2>&1 || true
+          docker exec samba-test cat /tmp/downloaded.txt
+          echo "File read/write OK"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose-test.yml down -v
+
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/samba"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          SHA_TAG="sha-$(git rev-parse --short HEAD)"
+
+          docker build -t "${IMAGE}:${SHA_TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${SHA_TAG}"
+          docker push "${IMAGE}:latest"

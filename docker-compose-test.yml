@@ -1,0 +1,15 @@
+services:
+  samba:
+    build: .
+    image: local/samba:test
+    container_name: samba-test
+    ports:
+      - "445:445"
+    environment:
+      LOG_LEVEL: "2"
+    volumes:
+      - samba-test-data:/share
+
+volumes:
+  samba-test-data:
+    driver: local

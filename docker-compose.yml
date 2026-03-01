@@ -1,0 +1,20 @@
+services:
+  samba:
+    build: .
+    container_name: samba
+    restart: unless-stopped
+    ports:
+      - "445:445"
+    environment:
+      SHARE_NAME: public
+      WORKGROUP: WORKGROUP
+      SERVER_STRING: Home Lab NAS
+      FORCE_USER_UID: "1000"
+      FORCE_GROUP_GID: "1000"
+      LOG_LEVEL: "1"
+    volumes:
+      - samba-data:/share
+
+volumes:
+  samba-data:
+    driver: local

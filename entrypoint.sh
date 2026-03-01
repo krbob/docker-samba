@@ -19,8 +19,15 @@ mkdir -p "${SHARE_PATH}"
 chown samba:samba "${SHARE_PATH}"
 chmod 0777 "${SHARE_PATH}"
 
+# Optional: restrict access to specific networks
+if [ -n "${SAMBA_HOSTS_ALLOW}" ]; then
+  HOSTS_ALLOW_LINE="  hosts allow = ${SAMBA_HOSTS_ALLOW}"
+else
+  HOSTS_ALLOW_LINE=""
+fi
+
 # Generate smb.conf from template
-export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL
+export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 
 # Validate configuration

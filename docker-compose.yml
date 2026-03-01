@@ -12,6 +12,7 @@ services:
       FORCE_USER_UID: "1000"
       FORCE_GROUP_GID: "1000"
       LOG_LEVEL: "1"
+      # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 10.13.13.0/24 127.0.0.0/8"
     volumes:
       - samba-data:/share
 

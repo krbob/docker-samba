@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/command/with-contenv sh
 set -e
 
 # Defaults
@@ -34,5 +34,3 @@ envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 echo "--- Samba configuration ---"
 testparm -s /etc/samba/smb.conf 2>/dev/null
 echo "---"
-
-exec smbd --foreground --debug-stdout --no-process-group --configfile=/etc/samba/smb.conf

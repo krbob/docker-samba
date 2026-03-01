@@ -1,0 +1,8 @@
+#!/command/with-contenv sh
+
+if [ "${WSDD2_ENABLE}" != "1" ]; then
+  s6-svc -Od .
+  exit 0
+fi
+
+exec wsdd2

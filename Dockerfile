@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       smbclient \
       wsdd2 \
       avahi-daemon \
+      tzdata \
       gettext-base \
       ca-certificates \
       wget \

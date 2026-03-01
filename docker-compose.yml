@@ -7,6 +7,7 @@ services:
     cap_add:
       - CAP_NET_ADMIN
     environment:
+      TZ: Europe/Warsaw
       SHARE_NAME: public
       WORKGROUP: WORKGROUP
       SERVER_STRING: Home Lab NAS

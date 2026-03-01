@@ -20,6 +20,7 @@ docker compose up -d
 
 | Variable | Default | Description |
 |---|---|---|
+| `TZ` | `UTC` | Timezone (e.g. `Europe/Warsaw`) |
 | `SHARE_NAME` | `public` | Share name |
 | `SHARE_PATH` | `/share` | Path inside container |
 | `WORKGROUP` | `WORKGROUP` | SMB workgroup |

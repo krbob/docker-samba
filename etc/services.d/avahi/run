@@ -1,0 +1,8 @@
+#!/command/with-contenv sh
+
+if [ "${AVAHI_ENABLE}" != "1" ]; then
+  s6-svc -Od .
+  exit 0
+fi
+
+exec avahi-daemon --no-drop-root --no-chroot

@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       samba-vfs-modules \
       smbclient \
       wsdd2 \
+      avahi-daemon \
       gettext-base \
       ca-certificates \
       wget \
@@ -27,6 +28,8 @@ RUN DPKG_ARCH="$(dpkg --print-architecture)" \
     && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
     && tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz \
     && rm /tmp/s6-overlay-*.tar.xz
+
+RUN sed -i 's/^#*enable-dbus=.*/enable-dbus=no/' /etc/avahi/avahi-daemon.conf
 
 COPY smb.conf.template /etc/samba/smb.conf.template
 COPY etc/ /etc/

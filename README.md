@@ -29,14 +29,16 @@ docker compose up -d
 | `LOG_LEVEL` | `1` | Log verbosity (0=minimal, 3=debug) |
 | `SAMBA_HOSTS_ALLOW` | *(unset)* | Restrict access to specific networks (e.g. `192.168.1.0/24 127.0.0.0/8`) |
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
+| `AVAHI_ENABLE` | *(unset)* | Set to `1` to enable Avahi (macOS/Linux network discovery) |
 
 ## Network Discovery
 
 By default, the share must be accessed by IP address. To enable automatic discovery:
 
 - **Windows**: Set `WSDD2_ENABLE=1` — uses [WSDD2](https://github.com/christgau/wsdd2) for Web Service Discovery
+- **macOS/Linux**: Set `AVAHI_ENABLE=1` — uses [Avahi](https://avahi.org/) for mDNS/DNS-SD (Finder sidebar discovery)
 
-WSDD2 requires `network_mode: host` and `CAP_NET_ADMIN` (see `docker-compose.yml`).
+Both require `network_mode: host` and `CAP_NET_ADMIN` (see `docker-compose.yml`).
 
 ## Storage
 

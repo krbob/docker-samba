@@ -19,6 +19,11 @@ ${HOSTS_ALLOW_LINE}
   load printers = no
   printing = bsd
   printcap name = /dev/null
+  usershare max shares = 0
+
+  # Identity mapping
+  idmap config * : backend = tdb
+  idmap config * : range = 3000-7999
 
   # Protocol
   server min protocol = SMB2

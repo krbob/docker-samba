@@ -55,6 +55,16 @@ jobs:
           docker exec samba-test cat /tmp/downloaded.txt
           echo "File read/write OK"
 
+      - name: Smoke test - veto files
+        run: |
+          docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+            -c 'put /etc/hostname .DS_Store' 2>&1 || true
+          OUTPUT=$(docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+            -c 'ls' 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "\.DS_Store" && { echo "Veto file should not be visible"; exit 1; }
+          echo "Veto files OK"
+
       - name: Smoke test - optional services start
         run: |
           docker compose -f docker-compose-test.yml down -v

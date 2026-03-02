@@ -28,8 +28,17 @@ else
   HOSTS_ALLOW_LINE=""
 fi
 
+# Optional: follow symlinks
+if [ "${FOLLOW_SYMLINKS}" = "1" ]; then
+  SYMLINKS_LINE="  follow symlinks = yes
+  wide links = yes
+  unix extensions = no"
+else
+  SYMLINKS_LINE=""
+fi
+
 # Generate smb.conf from template
-export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE
+export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE SYMLINKS_LINE
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 
 # Optional: restrict Avahi to specific interfaces

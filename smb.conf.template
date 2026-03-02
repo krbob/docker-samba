@@ -37,6 +37,7 @@ ${HOSTS_ALLOW_LINE}
   fruit:wipe_intentionally_left_blank_rfork = yes
   fruit:delete_empty_adfiles = yes
 
+${SYMLINKS_LINE}
   # Performance
   socket options = TCP_NODELAY IPTOS_LOWDELAY
   use sendfile = yes
@@ -53,3 +54,5 @@ ${HOSTS_ALLOW_LINE}
   force user = samba
   force group = samba
   nt acl support = no
+  veto files = /._*/.DS_Store/.Thumbs.db/desktop.ini/.apdisk/.AppleDouble/.TemporaryItems/.Trashes/
+  delete veto files = yes

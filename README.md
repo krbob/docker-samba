@@ -46,6 +46,7 @@ volumes:
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
 | `AVAHI_ENABLE` | *(unset)* | Set to `1` to enable Avahi (macOS/Linux network discovery) |
 | `ALLOWED_INTERFACES` | *(unset)* | Restrict WSDD2/Avahi to specific interfaces (e.g. `eno1,br0`) |
+| `FOLLOW_SYMLINKS` | *(unset)* | Set to `1` to allow symlinks inside the share |
 
 ## Network Discovery
 
@@ -71,5 +72,6 @@ When using a bind mount, set `FORCE_USER_UID` and `FORCE_GROUP_GID` to match the
 
 - Only port **445** (SMB2/SMB3) is exposed — no legacy NetBIOS (137-139)
 - macOS extended attributes are supported via `vfs_fruit`
+- OS junk files (`.DS_Store`, `Thumbs.db`, `._*`, etc.) are automatically vetoed
 - Process management via [s6-overlay](https://github.com/just-containers/s6-overlay)
 - Ensure port 445 is open in your firewall

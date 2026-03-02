@@ -41,16 +41,16 @@ jobs:
 
       - name: Smoke test - write and read file
         run: |
-          docker exec samba-test smbclient -N //127.0.0.1/public \
+          docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
             -c 'put /etc/hostname test-file.txt' 2>&1 || true
-          OUTPUT=$(docker exec samba-test smbclient -N //127.0.0.1/public \
+          OUTPUT=$(docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
             -c 'ls' 2>&1)
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -q "test-file.txt" || { echo "File not found"; exit 1; }
 
       - name: Smoke test - verify file content
         run: |
-          docker exec samba-test smbclient -N //127.0.0.1/public \
+          docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
             -c 'get test-file.txt /tmp/downloaded.txt' 2>&1 || true
           docker exec samba-test cat /tmp/downloaded.txt
           echo "File read/write OK"

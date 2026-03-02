@@ -9,10 +9,12 @@ set -e
 : "${FORCE_USER_UID:=1000}"
 : "${FORCE_GROUP_GID:=1000}"
 : "${LOG_LEVEL:=1}"
+: "${SAMBA_PASSWORD:=samba}"
 
 # Create samba group and user with configurable UID/GID
 groupadd -g "${FORCE_GROUP_GID}" samba 2>/dev/null || true
 useradd -u "${FORCE_USER_UID}" -g samba -M -s /sbin/nologin samba 2>/dev/null || true
+printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
 
 # Ensure share directory exists with correct ownership
 mkdir -p "${SHARE_PATH}"

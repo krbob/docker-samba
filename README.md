@@ -2,19 +2,32 @@
 
 Simple Samba (SMB) file server in Docker. Single share with minimal setup — connect with user `samba` and save credentials in your OS keychain.
 
-## Quick Start
+## Usage
 
-```bash
-docker compose up -d
+```yaml
+services:
+  samba:
+    image: ghcr.io/krbob/samba:latest
+    container_name: samba
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - CAP_NET_ADMIN
+    environment:
+      TZ: Europe/Warsaw
+      SHARE_NAME: public
+      SAMBA_PASSWORD: "samba"
+      # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 127.0.0.0/8"
+      # WSDD2_ENABLE: "1"
+      # AVAHI_ENABLE: "1"
+      # ALLOWED_INTERFACES: "eno1"
+    volumes:
+      - samba-data:/share
+
+volumes:
+  samba-data:
+    driver: local
 ```
-
-## Connecting
-
-| Platform | Address |
-|---|---|
-| macOS | Finder → Cmd+K → `smb://samba@<host-ip>/public` |
-| Windows | Explorer → `\\<host-ip>\public` (user: `samba`) |
-| Mobile | Any SMB-capable file manager → `smb://samba@<host-ip>/public` |
 
 ## Environment Variables
 
@@ -41,11 +54,11 @@ By default, the share must be accessed by IP address. To enable automatic discov
 - **Windows**: Set `WSDD2_ENABLE=1` — uses [WSDD2](https://github.com/christgau/wsdd2) for Web Service Discovery
 - **macOS/Linux**: Set `AVAHI_ENABLE=1` — uses [Avahi](https://avahi.org/) for mDNS/DNS-SD (Finder sidebar discovery)
 
-Both require `network_mode: host` and `CAP_NET_ADMIN` (see `docker-compose.yml`).
+Both require `network_mode: host` and `CAP_NET_ADMIN` (see compose example above).
 
 ## Storage
 
-By default, data is stored in a Docker named volume `samba-data`. To use a host directory instead, replace the volume in `docker-compose.yml`:
+By default, data is stored in a Docker named volume `samba-data`. To use a host directory instead, replace the volume:
 
 ```yaml
 volumes:

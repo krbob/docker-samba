@@ -1,6 +1,6 @@
 FROM debian:13.3-slim
 
-ARG S6_OVERLAY_VERSION=3.2.1.0
+ARG S6_OVERLAY_VERSION=3.2.2.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       samba \

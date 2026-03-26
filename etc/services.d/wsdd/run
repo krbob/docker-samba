@@ -6,6 +6,21 @@ if [ "${WSDD2_ENABLE}" != "1" ]; then
 fi
 
 WSDD_ARGS=""
+
+if [ -n "${WSDD2_HOSTNAME}" ]; then
+  WSDD_ARGS="${WSDD_ARGS} -H ${WSDD2_HOSTNAME}"
+fi
+
+if [ -n "${WSDD2_NETBIOS_NAME}" ]; then
+  WSDD_ARGS="${WSDD_ARGS} -N ${WSDD2_NETBIOS_NAME}"
+fi
+
+if [ -n "${WSDD2_WORKGROUP}" ]; then
+  WSDD_ARGS="${WSDD_ARGS} -G ${WSDD2_WORKGROUP}"
+elif [ -n "${WORKGROUP}" ]; then
+  WSDD_ARGS="${WSDD_ARGS} -G ${WORKGROUP}"
+fi
+
 if [ -n "${ALLOWED_INTERFACES}" ]; then
   IFS=','
   for iface in ${ALLOWED_INTERFACES}; do
@@ -14,4 +29,5 @@ if [ -n "${ALLOWED_INTERFACES}" ]; then
   unset IFS
 fi
 
+echo "Starting wsdd2${WSDD_ARGS}"
 exec wsdd2 ${WSDD_ARGS}

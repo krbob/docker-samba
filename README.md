@@ -13,12 +13,15 @@ services:
     network_mode: host
     cap_add:
       - CAP_NET_ADMIN
+      - CAP_NET_RAW
     environment:
       TZ: Europe/Warsaw
       SHARE_NAME: public
       SAMBA_PASSWORD: "samba"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 127.0.0.0/8"
       # WSDD2_ENABLE: "1"
+      # WSDD2_HOSTNAME: "homelab"
+      # WSDD2_NETBIOS_NAME: "HOMELAB"
       # AVAHI_ENABLE: "1"
       # ALLOWED_INTERFACES: "eno1"
     volumes:
@@ -44,6 +47,9 @@ volumes:
 | `LOG_LEVEL` | `1` | Log verbosity (0=minimal, 3=debug) |
 | `SAMBA_HOSTS_ALLOW` | *(unset)* | Restrict access to specific networks (e.g. `192.168.1.0/24 127.0.0.0/8`) |
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
+| `WSDD2_HOSTNAME` | *(unset)* | Override the hostname announced by WSDD2 |
+| `WSDD2_NETBIOS_NAME` | *(unset)* | Override the NetBIOS name announced by WSDD2 |
+| `WSDD2_WORKGROUP` | *(unset)* | Override the workgroup announced by WSDD2 (defaults to `WORKGROUP` env if set) |
 | `AVAHI_ENABLE` | *(unset)* | Set to `1` to enable Avahi (macOS/Linux network discovery) |
 | `ALLOWED_INTERFACES` | *(unset)* | Restrict WSDD2/Avahi to specific interfaces (e.g. `eno1,br0`) |
 | `FOLLOW_SYMLINKS` | *(unset)* | Set to `1` to allow symlinks inside the share |
@@ -55,7 +61,9 @@ By default, the share must be accessed by IP address. To enable automatic discov
 - **Windows**: Set `WSDD2_ENABLE=1` — uses [WSDD2](https://github.com/christgau/wsdd2) for Web Service Discovery
 - **macOS/Linux**: Set `AVAHI_ENABLE=1` — uses [Avahi](https://avahi.org/) for mDNS/DNS-SD (Finder sidebar discovery)
 
-Both require `network_mode: host` and `CAP_NET_ADMIN` (see compose example above).
+Windows discovery also requires `CAP_NET_RAW` for `wsdd2` in addition to `CAP_NET_ADMIN`.
+
+Both discovery methods require `network_mode: host` (see compose example above).
 
 ## Storage
 

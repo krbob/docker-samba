@@ -28,6 +28,13 @@ else
   HOSTS_ALLOW_LINE=""
 fi
 
+# Optional: guest access
+if [ "${GUEST_OK}" = "1" ]; then
+  GUEST_LINE="  guest ok = yes"
+else
+  GUEST_LINE="  valid users = samba"
+fi
+
 # Optional: follow symlinks
 if [ "${FOLLOW_SYMLINKS}" = "1" ]; then
   SYMLINKS_LINE="  follow symlinks = yes
@@ -38,7 +45,7 @@ else
 fi
 
 # Generate smb.conf from template
-export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE SYMLINKS_LINE
+export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE SYMLINKS_LINE GUEST_LINE
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 
 # Optional: restrict Avahi to specific interfaces

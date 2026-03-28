@@ -110,6 +110,22 @@ jobs:
           docker rm -f samba-discovery
           docker volume rm samba-discovery-data
 
+      - name: Smoke test - guest access allowed with GUEST_OK
+        run: |
+          docker run -d --name samba-guest \
+            -e GUEST_OK=1 \
+            -v samba-guest-data:/share \
+            local/samba:test
+          sleep 3
+          docker exec samba-guest smbclient -N //127.0.0.1/public -c 'ls' 2>&1 \
+            || { echo "Guest access should be allowed"; docker logs samba-guest; exit 1; }
+          docker exec samba-guest smbclient -N //127.0.0.1/public \
+            -c 'put /etc/hostname guest-test.txt' 2>&1 \
+            || { echo "Guest should be able to write"; docker logs samba-guest; exit 1; }
+          echo "Guest access OK"
+          docker rm -f samba-guest
+          docker volume rm samba-guest-data
+
       - name: Cleanup
         if: always()
         run: docker compose -f docker-compose-test.yml down -v

@@ -24,6 +24,7 @@ services:
       # AVAHI_ENABLE: "1"
       # ALLOWED_INTERFACES: "eno1"
       # FOLLOW_SYMLINKS: "1"
+      # GUEST_OK: "1"
     volumes:
       - samba-data:/share
 

@@ -53,6 +53,7 @@ volumes:
 | `AVAHI_ENABLE` | *(unset)* | Set to `1` to enable Avahi (macOS/Linux network discovery) |
 | `ALLOWED_INTERFACES` | *(unset)* | Restrict WSDD2/Avahi to specific interfaces (e.g. `eno1,br0`) |
 | `FOLLOW_SYMLINKS` | *(unset)* | Set to `1` to allow symlinks inside the share |
+| `GUEST_OK` | *(unset)* | Set to `1` to allow anonymous access (no password required) |
 
 ## Network Discovery
 

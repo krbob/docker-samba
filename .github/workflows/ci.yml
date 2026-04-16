@@ -98,6 +98,7 @@ jobs:
           docker run -d --name samba-discovery \
             --cap-add CAP_NET_ADMIN \
             --cap-add CAP_NET_RAW \
+            -e SAMBA_PASSWORD=test-password \
             -e WORKGROUP=TESTWG \
             -e WSDD2_ENABLE=1 \
             -e WSDD2_HOSTNAME=testhost \

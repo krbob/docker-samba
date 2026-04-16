@@ -8,6 +8,7 @@ set -e
 : "${SERVER_STRING:=Samba Server}"
 : "${FORCE_USER_UID:=1000}"
 : "${FORCE_GROUP_GID:=1000}"
+: "${SHARE_DIR_MODE:=}"
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_PASSWORD:=samba}"
 
@@ -19,7 +20,10 @@ printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samb
 # Ensure share directory exists with correct ownership
 mkdir -p "${SHARE_PATH}"
 chown samba:samba "${SHARE_PATH}"
-chmod 0777 "${SHARE_PATH}"
+
+if [ -n "${SHARE_DIR_MODE}" ]; then
+  chmod "${SHARE_DIR_MODE}" "${SHARE_PATH}"
+fi
 
 # Optional: restrict access to specific networks
 if [ -n "${SAMBA_HOSTS_ALLOW}" ]; then

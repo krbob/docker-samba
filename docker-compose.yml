@@ -15,6 +15,7 @@ services:
       SERVER_STRING: Home Lab NAS
       FORCE_USER_UID: "1000"
       FORCE_GROUP_GID: "1000"
+      # SHARE_DIR_MODE: "0777"
       LOG_LEVEL: "1"
       # SAMBA_PASSWORD: "samba"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 10.13.13.0/24 127.0.0.0/8"

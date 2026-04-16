@@ -6,6 +6,7 @@ services:
     ports:
       - "445:445"
     environment:
+      SAMBA_PASSWORD: "test-password"
       LOG_LEVEL: "2"
     volumes:
       - samba-test-data:/share

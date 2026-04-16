@@ -10,7 +10,7 @@ set -e
 : "${FORCE_GROUP_GID:=1000}"
 : "${SHARE_DIR_MODE:=}"
 : "${LOG_LEVEL:=1}"
-: "${SAMBA_PASSWORD:=samba}"
+: "${SAMBA_PASSWORD:=}"
 
 ensure_samba_group() {
   if getent group samba >/dev/null; then
@@ -55,7 +55,20 @@ ensure_samba_user() {
 # Create samba group and user with configurable UID/GID
 ensure_samba_group
 ensure_samba_user
-printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
+
+if [ "${GUEST_OK}" = "1" ]; then
+  if [ -n "${SAMBA_PASSWORD}" ]; then
+    printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
+  else
+    echo "GUEST_OK=1 and SAMBA_PASSWORD is unset; skipping SMB password setup"
+  fi
+else
+  if [ -z "${SAMBA_PASSWORD}" ]; then
+    echo "Set SAMBA_PASSWORD or enable GUEST_OK=1" >&2
+    exit 1
+  fi
+  printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
+fi
 
 # Ensure share directory exists with correct ownership
 mkdir -p "${SHARE_PATH}"

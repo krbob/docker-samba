@@ -47,28 +47,28 @@ jobs:
 
       - name: Smoke test - write and read file
         run: |
-          docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+          docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
             -c 'put /etc/hostname test-file.txt' 2>&1
-          OUTPUT=$(docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+          OUTPUT=$(docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
             -c 'ls' 2>&1)
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -q "test-file.txt" || { echo "File not found"; exit 1; }
 
       - name: Smoke test - verify file content
         run: |
-          docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+          docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
             -c 'get test-file.txt /tmp/downloaded.txt' 2>&1
           docker exec samba-test cat /tmp/downloaded.txt
           echo "File read/write OK"
 
       - name: Smoke test - veto files
         run: |
-          PUT_OUTPUT=$(docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+          PUT_OUTPUT=$(docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
             -c 'put /etc/hostname .DS_Store' 2>&1 || true)
           echo "$PUT_OUTPUT"
           echo "$PUT_OUTPUT" | grep -q "NT_STATUS_OBJECT_NAME_NOT_FOUND" \
             || { echo "Expected vetoed file upload to be rejected"; exit 1; }
-          OUTPUT=$(docker exec samba-test smbclient -U samba%samba //127.0.0.1/public \
+          OUTPUT=$(docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
             -c 'ls' 2>&1)
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -q "\.DS_Store" && { echo "Veto file should not be visible"; exit 1; }

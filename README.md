@@ -1,6 +1,6 @@
 # Docker Samba
 
-Simple Samba (SMB) file server in Docker. Single share with minimal setup — connect with user `samba` and save credentials in your OS keychain.
+Simple Samba (SMB) file server in Docker. Single share with minimal setup for either authenticated access or a deliberate guest share on a trusted LAN.
 
 ## Usage
 
@@ -17,7 +17,8 @@ services:
     environment:
       TZ: Europe/Warsaw
       SHARE_NAME: public
-      SAMBA_PASSWORD: "samba"
+      SAMBA_PASSWORD: "replace-with-a-strong-password"
+      # GUEST_OK: "1"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 127.0.0.0/8"
       # WSDD2_ENABLE: "1"
       # WSDD2_HOSTNAME: "homelab"
@@ -44,7 +45,7 @@ volumes:
 | `FORCE_USER_UID` | `1000` | UID for file operations |
 | `FORCE_GROUP_GID` | `1000` | GID for file operations |
 | `SHARE_DIR_MODE` | *(unset)* | Optional mode to apply to `SHARE_PATH` at startup (e.g. `0777`) |
-| `SAMBA_PASSWORD` | `samba` | Password for the `samba` user |
+| `SAMBA_PASSWORD` | *(required unless `GUEST_OK=1`)* | Password for the `samba` user |
 | `LOG_LEVEL` | `1` | Log verbosity (0=minimal, 3=debug) |
 | `SAMBA_HOSTS_ALLOW` | *(unset)* | Restrict access to specific networks (e.g. `192.168.1.0/24 127.0.0.0/8`) |
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
@@ -55,6 +56,8 @@ volumes:
 | `ALLOWED_INTERFACES` | *(unset)* | Restrict WSDD2/Avahi to specific interfaces (e.g. `eno1,br0`) |
 | `FOLLOW_SYMLINKS` | *(unset)* | Set to `1` to allow symlinks inside the share |
 | `GUEST_OK` | *(unset)* | Set to `1` to allow anonymous access (no password required) |
+
+Set either `SAMBA_PASSWORD` for authenticated access or `GUEST_OK=1` for an anonymous guest share. Leaving both unset is treated as a configuration error.
 
 ## Network Discovery
 

@@ -46,7 +46,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     if [ "${GUEST_OK:-}" = "1" ]; then \
       smbclient -N "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
     else \
-      smbclient --user=samba --password="${SAMBA_PASSWORD:-samba}" "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
+      smbclient --user=samba --password="${SAMBA_PASSWORD}" "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
     fi \
   '
 

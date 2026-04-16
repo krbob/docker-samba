@@ -24,13 +24,21 @@ RUN DPKG_ARCH="$(dpkg --print-architecture)" \
       arm64) S6_ARCH="aarch64" ;; \
       *) S6_ARCH="${DPKG_ARCH}" ;; \
     esac \
+    && S6_ARCHIVE="/tmp/s6-overlay-${S6_ARCH}.tar.xz" \
     && wget -q -O /tmp/s6-overlay-noarch.tar.xz \
        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
-    && wget -q -O /tmp/s6-overlay-arch.tar.xz \
+    && wget -q -O /tmp/s6-overlay-noarch.tar.xz.sha256 \
+       "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz.sha256" \
+    && wget -q -O "${S6_ARCHIVE}" \
        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
+    && wget -q -O "${S6_ARCHIVE}.sha256" \
+       "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz.sha256" \
+    && cd /tmp \
+    && sha256sum -c s6-overlay-noarch.tar.xz.sha256 \
+    && sha256sum -c "s6-overlay-${S6_ARCH}.tar.xz.sha256" \
     && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
-    && tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz \
-    && rm /tmp/s6-overlay-*.tar.xz
+    && tar -C / -Jxpf "${S6_ARCHIVE}" \
+    && rm /tmp/s6-overlay-*.tar.xz /tmp/s6-overlay-*.tar.xz.sha256
 
 RUN sed -i 's/^#*enable-dbus=.*/enable-dbus=no/' /etc/avahi/avahi-daemon.conf
 

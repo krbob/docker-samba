@@ -11,9 +11,6 @@ services:
     container_name: samba
     restart: unless-stopped
     network_mode: host
-    cap_add:
-      - CAP_NET_ADMIN
-      - CAP_NET_RAW
     environment:
       TZ: Europe/Warsaw
       SHARE_NAME: public
@@ -66,7 +63,13 @@ By default, the share must be accessed by IP address. To enable automatic discov
 - **Windows**: Set `WSDD2_ENABLE=1` — uses [WSDD2](https://github.com/christgau/wsdd2) for Web Service Discovery
 - **macOS/Linux**: Set `AVAHI_ENABLE=1` — uses [Avahi](https://avahi.org/) for mDNS/DNS-SD (Finder sidebar discovery)
 
-Windows discovery also requires `CAP_NET_RAW` for `wsdd2` in addition to `CAP_NET_ADMIN`.
+If you enable WSDD2, add:
+
+```yaml
+cap_add:
+  - CAP_NET_ADMIN
+  - CAP_NET_RAW
+```
 
 Both discovery methods require `network_mode: host` (see compose example above).
 

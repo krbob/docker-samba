@@ -4,10 +4,6 @@ services:
     container_name: samba
     restart: unless-stopped
     network_mode: host
-    cap_add:
-      - CAP_NET_ADMIN
-      # Required by wsdd2 for Windows network discovery
-      - CAP_NET_RAW
     environment:
       TZ: Europe/Warsaw
       SHARE_NAME: public

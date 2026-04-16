@@ -2,6 +2,8 @@ FROM debian:13.4-slim
 
 ARG S6_OVERLAY_VERSION=3.2.2.0
 
+ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       samba \
       samba-vfs-modules \
@@ -39,6 +41,13 @@ RUN chmod +x /etc/cont-init.d/* /etc/services.d/*/run
 EXPOSE 445/tcp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD smbclient -N -L //127.0.0.1 2>&1 | grep -qi "disk" || exit 1
+  CMD sh -ec ' \
+    share="${SHARE_NAME:-public}"; \
+    if [ "${GUEST_OK:-}" = "1" ]; then \
+      smbclient -N "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
+    else \
+      smbclient --user=samba --password="${SAMBA_PASSWORD:-samba}" "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
+    fi \
+  '
 
 ENTRYPOINT ["/init"]

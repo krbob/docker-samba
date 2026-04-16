@@ -12,9 +12,49 @@ set -e
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_PASSWORD:=samba}"
 
+ensure_samba_group() {
+  if getent group samba >/dev/null; then
+    current_gid="$(getent group samba | cut -d: -f3)"
+    if [ "${current_gid}" != "${FORCE_GROUP_GID}" ]; then
+      echo "Group samba already exists with GID ${current_gid}, expected ${FORCE_GROUP_GID}" >&2
+      exit 1
+    fi
+    return
+  fi
+
+  existing_group="$(getent group "${FORCE_GROUP_GID}" | cut -d: -f1 || true)"
+  if [ -n "${existing_group}" ]; then
+    echo "Requested FORCE_GROUP_GID=${FORCE_GROUP_GID} already belongs to group ${existing_group}" >&2
+    exit 1
+  fi
+
+  groupadd -g "${FORCE_GROUP_GID}" samba
+}
+
+ensure_samba_user() {
+  if getent passwd samba >/dev/null; then
+    current_uid="$(getent passwd samba | cut -d: -f3)"
+    current_gid="$(getent passwd samba | cut -d: -f4)"
+    samba_gid="$(getent group samba | cut -d: -f3)"
+    if [ "${current_uid}" != "${FORCE_USER_UID}" ] || [ "${current_gid}" != "${samba_gid}" ]; then
+      echo "User samba already exists with UID:GID ${current_uid}:${current_gid}, expected ${FORCE_USER_UID}:${samba_gid}" >&2
+      exit 1
+    fi
+    return
+  fi
+
+  existing_user="$(getent passwd "${FORCE_USER_UID}" | cut -d: -f1 || true)"
+  if [ -n "${existing_user}" ]; then
+    echo "Requested FORCE_USER_UID=${FORCE_USER_UID} already belongs to user ${existing_user}" >&2
+    exit 1
+  fi
+
+  useradd -u "${FORCE_USER_UID}" -g samba -M -s /sbin/nologin samba
+}
+
 # Create samba group and user with configurable UID/GID
-groupadd -g "${FORCE_GROUP_GID}" samba 2>/dev/null || true
-useradd -u "${FORCE_USER_UID}" -g samba -M -s /sbin/nologin samba 2>/dev/null || true
+ensure_samba_group
+ensure_samba_user
 printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
 
 # Ensure share directory exists with correct ownership

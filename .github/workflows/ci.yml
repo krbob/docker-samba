@@ -23,9 +23,15 @@ jobs:
         run: |
           echo "Waiting for Samba to start..."
           for i in $(seq 1 30); do
-            if docker exec samba-test smbclient -N -L //127.0.0.1 2>&1 | grep -qi "disk"; then
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-test)
+            if [ "$HEALTH" = "healthy" ]; then
               echo "Samba is ready"
               exit 0
+            fi
+            if [ "$HEALTH" = "unhealthy" ]; then
+              echo "Samba became unhealthy"
+              docker logs samba-test
+              exit 1
             fi
             sleep 1
           done
@@ -125,6 +131,23 @@ jobs:
           echo "Guest access OK"
           docker rm -f samba-guest
           docker volume rm samba-guest-data
+
+      - name: Smoke test - invalid UID/GID fails fast
+        run: |
+          docker run -d --name samba-invalid \
+            -e FORCE_USER_UID=0 \
+            -e FORCE_GROUP_GID=0 \
+            local/samba:test
+          for i in $(seq 1 10); do
+            STATUS=$(docker inspect -f '{{.State.Status}}' samba-invalid)
+            [ "$STATUS" = "exited" ] && break
+            sleep 1
+          done
+          echo "container status: $STATUS"
+          [ "$STATUS" = "exited" ] || { echo "Container should exit on invalid UID/GID"; docker logs samba-invalid; exit 1; }
+          docker logs samba-invalid 2>&1 | grep -Eq "FORCE_USER_UID|FORCE_GROUP_GID|Group samba already exists|User samba already exists" \
+            || { echo "Expected a clear startup error"; docker logs samba-invalid; exit 1; }
+          docker rm -f samba-invalid >/dev/null 2>&1 || true
 
       - name: Cleanup
         if: always()

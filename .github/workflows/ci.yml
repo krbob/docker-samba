@@ -122,8 +122,11 @@ jobs:
             && echo "wsdd: up (correct)" || { echo "wsdd not running"; docker logs samba-discovery; exit 1; }
           docker exec samba-discovery /command/s6-svstat /var/run/s6/legacy-services/avahi 2>&1 | grep -q "^up" \
             && echo "avahi: up (correct)" || { echo "avahi not running"; docker logs samba-discovery; exit 1; }
-          docker logs samba-discovery 2>&1 | grep -q "Starting wsdd2 -H testhost -N TESTHOST -G TESTWG" \
-            || { echo "wsdd2 did not start with expected arguments"; docker logs samba-discovery; exit 1; }
+          DISCOVERY_LOGS=$(docker logs samba-discovery 2>&1)
+          case "$DISCOVERY_LOGS" in
+            *"Starting wsdd2 -H testhost -N TESTHOST -G TESTWG"*) ;;
+            *) echo "wsdd2 did not start with expected arguments"; echo "$DISCOVERY_LOGS"; exit 1 ;;
+          esac
           docker rm -f samba-discovery
           docker volume rm samba-discovery-data
 

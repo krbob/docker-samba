@@ -51,10 +51,14 @@ volumes:
 | `WSDD2_WORKGROUP` | *(unset)* | Override the workgroup announced by WSDD2 (defaults to `WORKGROUP` env if set) |
 | `AVAHI_ENABLE` | *(unset)* | Set to `1` to enable Avahi (macOS/Linux network discovery) |
 | `ALLOWED_INTERFACES` | *(unset)* | Restrict WSDD2/Avahi to specific interfaces (e.g. `eno1,br0`) |
-| `FOLLOW_SYMLINKS` | *(unset)* | Set to `1` to allow symlinks inside the share |
+| `FOLLOW_SYMLINKS` | *(unset)* | Security-sensitive: set to `1` to allow Samba wide links |
 | `GUEST_OK` | *(unset)* | Set to `1` to allow anonymous access (no password required) |
 
 Set either `SAMBA_PASSWORD` for authenticated access or `GUEST_OK=1` for an anonymous guest share. Leaving both unset is treated as a configuration error.
+
+### Symlinks
+
+`FOLLOW_SYMLINKS=1` enables Samba `wide links`, which lets clients follow symlinks that point outside `SHARE_PATH` inside the container. Use it only for trusted users and tightly scoped mounts, because it can expose other mounted paths or container filesystem paths.
 
 ## Network Discovery
 

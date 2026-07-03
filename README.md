@@ -15,6 +15,7 @@ services:
       TZ: Europe/Warsaw
       SHARE_NAME: public
       SAMBA_PASSWORD: "replace-with-a-strong-password"
+      # SAMBA_PASSWORD_FILE: /run/secrets/samba_password
       # GUEST_OK: "1"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 127.0.0.0/8"
       # WSDD2_ENABLE: "1"
@@ -24,10 +25,16 @@ services:
       # ALLOWED_INTERFACES: "eno1"
     volumes:
       - samba-data:/share
+    # secrets:
+    #   - samba_password
 
 volumes:
   samba-data:
     driver: local
+
+# secrets:
+#   samba_password:
+#     file: ./samba_password.txt
 ```
 
 ## Environment Variables
@@ -47,7 +54,8 @@ volumes:
 | `DIRECTORY_MASK` | `0775` | Directory mode mask for newly created directories |
 | `RECYCLE_ENABLE` | *(unset)* | Set to `1` to move SMB-deleted files into a recycle directory |
 | `RECYCLE_REPOSITORY` | `.recycle` | Relative recycle directory inside `SHARE_PATH` |
-| `SAMBA_PASSWORD` | *(required unless `GUEST_OK=1`)* | Password for the `samba` user |
+| `SAMBA_PASSWORD` | *(required unless `SAMBA_PASSWORD_FILE` or `GUEST_OK=1`)* | Password for the `samba` user |
+| `SAMBA_PASSWORD_FILE` | *(unset)* | Read the Samba password from a file, such as `/run/secrets/samba_password` |
 | `LOG_LEVEL` | `1` | Log verbosity (0=minimal, 3=debug) |
 | `SAMBA_HOSTS_ALLOW` | *(unset)* | Restrict access to specific networks (e.g. `192.168.1.0/24 127.0.0.0/8`) |
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
@@ -59,7 +67,7 @@ volumes:
 | `FOLLOW_SYMLINKS` | *(unset)* | Security-sensitive: set to `1` to allow Samba wide links |
 | `GUEST_OK` | *(unset)* | Set to `1` to allow anonymous access (no password required) |
 
-Set either `SAMBA_PASSWORD` for authenticated access or `GUEST_OK=1` for an anonymous guest share. Leaving both unset is treated as a configuration error.
+Set only one of `SAMBA_PASSWORD` or `SAMBA_PASSWORD_FILE`. Use one of those for authenticated access, or set `GUEST_OK=1` for an anonymous guest share. Leaving all three unset is treated as a configuration error.
 
 ### Symlinks
 

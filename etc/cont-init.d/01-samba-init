@@ -11,6 +11,7 @@ set -e
 : "${SHARE_DIR_MODE:=}"
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_PASSWORD:=}"
+: "${SAMBA_PASSWORD_FILE:=}"
 : "${READ_ONLY:=}"
 : "${CREATE_MASK:=0664}"
 : "${DIRECTORY_MASK:=0775}"
@@ -52,6 +53,19 @@ validate_relative_path() {
   case "${value}" in
     "" | /* | .. | ../* | */.. | */../*) fail "${name} must be a relative path inside SHARE_PATH" ;;
   esac
+}
+
+load_samba_password() {
+  if [ -n "${SAMBA_PASSWORD}" ] && [ -n "${SAMBA_PASSWORD_FILE}" ]; then
+    fail "Set only one of SAMBA_PASSWORD or SAMBA_PASSWORD_FILE"
+  fi
+
+  if [ -n "${SAMBA_PASSWORD_FILE}" ]; then
+    [ -r "${SAMBA_PASSWORD_FILE}" ] || fail "SAMBA_PASSWORD_FILE is not readable: ${SAMBA_PASSWORD_FILE}"
+
+    IFS= read -r SAMBA_PASSWORD < "${SAMBA_PASSWORD_FILE}" || [ -n "${SAMBA_PASSWORD}" ]
+    [ -n "${SAMBA_PASSWORD}" ] || fail "SAMBA_PASSWORD_FILE is empty: ${SAMBA_PASSWORD_FILE}"
+  fi
 }
 
 ensure_samba_group() {
@@ -112,6 +126,7 @@ write_healthcheck_auth() {
 }
 
 # Create samba group and user with configurable UID/GID
+load_samba_password
 ensure_samba_group
 ensure_samba_user
 

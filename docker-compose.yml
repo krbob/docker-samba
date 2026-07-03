@@ -7,8 +7,9 @@ services:
     environment:
       TZ: Europe/Warsaw
       SHARE_NAME: public
-      # Set either SAMBA_PASSWORD or GUEST_OK.
+      # Set SAMBA_PASSWORD, SAMBA_PASSWORD_FILE, or GUEST_OK.
       # SAMBA_PASSWORD: "replace-with-a-strong-password"
+      # SAMBA_PASSWORD_FILE: /run/secrets/samba_password
       WORKGROUP: WORKGROUP
       SERVER_STRING: Home Lab NAS
       FORCE_USER_UID: "1000"
@@ -31,7 +32,13 @@ services:
       # GUEST_OK: "1"
     volumes:
       - samba-data:/share
+    # secrets:
+    #   - samba_password
 
 volumes:
   samba-data:
     driver: local
+
+# secrets:
+#   samba_password:
+#     file: ./samba_password.txt

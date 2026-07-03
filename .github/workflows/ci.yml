@@ -35,7 +35,7 @@ jobs:
         run: docker run --rm -i hadolint/hadolint:v2.12.0 /bin/hadolint --ignore DL3008 - < Dockerfile
 
       - name: Build test image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -57,7 +57,7 @@ jobs:
               local/samba:test
 
       - name: Build arm64 image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/arm64
@@ -568,7 +568,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Build and push multi-arch image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+share="${SHARE_NAME:-public}"
+auth_file="${SAMBA_HEALTHCHECK_AUTH_FILE:-/run/samba/healthcheck.auth}"
+share_url="//127.0.0.1/${share}"
+
+if [ "${GUEST_OK:-}" = "1" ] && [ ! -s "${auth_file}" ]; then
+  exec smbclient -N "${share_url}" -c quit >/dev/null 2>&1
+fi
+
+if [ ! -s "${auth_file}" ]; then
+  echo "Missing Samba healthcheck credentials at ${auth_file}" >&2
+  exit 1
+fi
+
+exec smbclient -A "${auth_file}" "${share_url}" -c quit >/dev/null 2>&1

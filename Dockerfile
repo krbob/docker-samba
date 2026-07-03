@@ -44,18 +44,11 @@ RUN sed -i 's/^#*enable-dbus=.*/enable-dbus=no/' /etc/avahi/avahi-daemon.conf
 
 COPY smb.conf.template /etc/samba/smb.conf.template
 COPY etc/ /etc/
-RUN chmod +x /etc/cont-init.d/* /etc/services.d/*/run
+RUN chmod +x /etc/cont-init.d/* /etc/services.d/*/run /etc/samba-healthcheck
 
 EXPOSE 445/tcp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD sh -ec ' \
-    share="${SHARE_NAME:-public}"; \
-    if [ "${GUEST_OK:-}" = "1" ]; then \
-      smbclient -N "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
-    else \
-      smbclient --user=samba --password="${SAMBA_PASSWORD}" "//127.0.0.1/${share}" -c quit >/dev/null 2>&1; \
-    fi \
-  '
+  CMD /etc/samba-healthcheck
 
 ENTRYPOINT ["/init"]

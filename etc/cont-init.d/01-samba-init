@@ -12,6 +12,8 @@ set -e
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_PASSWORD:=}"
 
+HEALTHCHECK_AUTH_FILE="/run/samba/healthcheck.auth"
+
 ensure_samba_group() {
   if getent group samba >/dev/null; then
     current_gid="$(getent group samba | cut -d: -f3)"
@@ -52,6 +54,21 @@ ensure_samba_user() {
   useradd -u "${FORCE_USER_UID}" -g samba -M -s /sbin/nologin samba
 }
 
+write_healthcheck_auth() {
+  install -d -m 0700 /run/samba
+
+  if [ -n "${SAMBA_PASSWORD}" ]; then
+    umask 077
+    {
+      printf 'username = samba\n'
+      printf 'password = %s\n' "${SAMBA_PASSWORD}"
+      printf 'domain = %s\n' "${WORKGROUP}"
+    } > "${HEALTHCHECK_AUTH_FILE}"
+  else
+    rm -f "${HEALTHCHECK_AUTH_FILE}"
+  fi
+}
+
 # Create samba group and user with configurable UID/GID
 ensure_samba_group
 ensure_samba_user
@@ -69,6 +86,8 @@ else
   fi
   printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
 fi
+
+write_healthcheck_auth
 
 # Ensure share directory exists with correct ownership
 mkdir -p "${SHARE_PATH}"

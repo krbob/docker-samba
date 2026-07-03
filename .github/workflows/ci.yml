@@ -39,6 +39,16 @@ jobs:
           docker logs samba-test
           exit 1
 
+      - name: Smoke test - healthcheck credentials are not in argv
+        run: |
+          HEALTHCHECK=$(docker inspect -f '{{json .Config.Healthcheck.Test}}' samba-test)
+          echo "$HEALTHCHECK"
+          echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD' \
+            && { echo "Healthcheck must not expose the Samba password in argv"; exit 1; }
+          docker exec samba-test test -f /run/samba/healthcheck.auth
+          MODE=$(docker exec samba-test stat -c '%a' /run/samba/healthcheck.auth)
+          [ "$MODE" = "600" ] || { echo "Expected healthcheck credentials mode 600, got $MODE"; exit 1; }
+
       - name: Smoke test - list shares
         run: |
           OUTPUT=$(docker exec samba-test smbclient -N -L //127.0.0.1 2>&1)

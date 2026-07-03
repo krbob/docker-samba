@@ -33,9 +33,9 @@ RUN DPKG_ARCH="$(dpkg --print-architecture)" \
        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
     && wget -q -O "${S6_ARCHIVE}.sha256" \
        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz.sha256" \
-    && cd /tmp \
-    && sha256sum -c s6-overlay-noarch.tar.xz.sha256 \
-    && sha256sum -c "s6-overlay-${S6_ARCH}.tar.xz.sha256" \
+    && sed -i 's#  #  /tmp/#' /tmp/s6-overlay-noarch.tar.xz.sha256 "${S6_ARCHIVE}.sha256" \
+    && sha256sum -c /tmp/s6-overlay-noarch.tar.xz.sha256 \
+    && sha256sum -c "${S6_ARCHIVE}.sha256" \
     && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
     && tar -C / -Jxpf "${S6_ARCHIVE}" \
     && rm /tmp/s6-overlay-*.tar.xz /tmp/s6-overlay-*.tar.xz.sha256

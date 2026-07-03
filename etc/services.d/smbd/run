@@ -1,2 +1,3 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 exec smbd --foreground --debug-stdout --no-process-group --configfile=/etc/samba/smb.conf

@@ -1,33 +1,40 @@
 #!/command/with-contenv sh
+# shellcheck shell=sh
 
 if [ "${WSDD2_ENABLE}" != "1" ]; then
   s6-svc -Od .
   exit 0
 fi
 
-WSDD_ARGS=""
+set --
 
 if [ -n "${WSDD2_HOSTNAME}" ]; then
-  WSDD_ARGS="${WSDD_ARGS} -H ${WSDD2_HOSTNAME}"
+  set -- "$@" -H "${WSDD2_HOSTNAME}"
 fi
 
 if [ -n "${WSDD2_NETBIOS_NAME}" ]; then
-  WSDD_ARGS="${WSDD_ARGS} -N ${WSDD2_NETBIOS_NAME}"
+  set -- "$@" -N "${WSDD2_NETBIOS_NAME}"
 fi
 
 if [ -n "${WSDD2_WORKGROUP}" ]; then
-  WSDD_ARGS="${WSDD_ARGS} -G ${WSDD2_WORKGROUP}"
+  set -- "$@" -G "${WSDD2_WORKGROUP}"
 elif [ -n "${WORKGROUP}" ]; then
-  WSDD_ARGS="${WSDD_ARGS} -G ${WORKGROUP}"
+  set -- "$@" -G "${WORKGROUP}"
 fi
 
 if [ -n "${ALLOWED_INTERFACES}" ]; then
+  old_ifs="${IFS}"
   IFS=','
   for iface in ${ALLOWED_INTERFACES}; do
-    WSDD_ARGS="${WSDD_ARGS} -i ${iface}"
+    set -- "$@" -i "${iface}"
   done
-  unset IFS
+  IFS="${old_ifs}"
 fi
 
-echo "Starting wsdd2${WSDD_ARGS}"
-exec wsdd2 ${WSDD_ARGS}
+printf 'Starting wsdd2'
+for arg do
+  printf ' %s' "${arg}"
+done
+printf '\n'
+
+exec wsdd2 "$@"

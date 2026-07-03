@@ -67,6 +67,10 @@ load_samba_password() {
     IFS= read -r SAMBA_PASSWORD < "${SAMBA_PASSWORD_FILE}" || [ -n "${SAMBA_PASSWORD}" ]
     [ -n "${SAMBA_PASSWORD}" ] || fail "SAMBA_PASSWORD_FILE is empty: ${SAMBA_PASSWORD_FILE}"
   fi
+
+  if [ -n "${SAMBA_PASSWORD}" ]; then
+    validate_single_line SAMBA_PASSWORD "${SAMBA_PASSWORD}"
+  fi
 }
 
 ensure_samba_group() {

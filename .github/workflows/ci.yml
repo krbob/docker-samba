@@ -216,6 +216,29 @@ jobs:
           echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD' \
             && { echo "Healthcheck must not expose the Samba password in argv"; exit 1; }
 
+      - name: Smoke test - multiline password fails fast
+        run: |
+          cleanup() {
+            docker rm -f samba-multiline-password >/dev/null 2>&1 || true
+            docker volume rm samba-multiline-password-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          MULTILINE_PASSWORD=$(printf 'bad\npassword')
+          docker run -d --name samba-multiline-password \
+            -e SAMBA_PASSWORD="${MULTILINE_PASSWORD}" \
+            -v samba-multiline-password-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 10); do
+            STATUS=$(docker inspect -f '{{.State.Status}}' samba-multiline-password)
+            [ "$STATUS" = "exited" ] && break
+            sleep 1
+          done
+          [ "$STATUS" = "exited" ] || { echo "Container should exit on multiline SAMBA_PASSWORD"; docker logs samba-multiline-password; exit 1; }
+          docker logs samba-multiline-password 2>&1 | grep -q "SAMBA_PASSWORD must not contain newlines" \
+            || { echo "Expected multiline password startup error"; docker logs samba-multiline-password; exit 1; }
+
       - name: Smoke test - read-only share blocks writes
         run: |
           cleanup() {

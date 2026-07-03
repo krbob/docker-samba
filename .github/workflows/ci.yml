@@ -486,7 +486,7 @@ jobs:
         run: |
           cleanup() {
             docker rm -f samba-bind-uid >/dev/null 2>&1 || true
-            rm -rf /tmp/samba-bind-uid-test
+            rm -rf /tmp/samba-bind-uid-test 2>/dev/null || sudo rm -rf /tmp/samba-bind-uid-test
           }
           trap cleanup EXIT
 

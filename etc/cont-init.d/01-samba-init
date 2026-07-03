@@ -13,6 +13,8 @@ set -e
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_INTERFACES:=}"
 : "${SAMBA_BIND_INTERFACES_ONLY:=}"
+: "${SMB_ENCRYPT:=}"
+: "${SMB_SIGNING:=}"
 : "${SAMBA_PASSWORD:=}"
 : "${SAMBA_PASSWORD_FILE:=}"
 : "${READ_ONLY:=}"
@@ -57,6 +59,20 @@ validate_single_line() {
   case "${value}" in
     *'
 '*) fail "${name} must not contain newlines" ;;
+  esac
+}
+
+validate_enum() {
+  name="$1"
+  value="$2"
+  allowed_values="$3"
+
+  validate_single_line "${name}" "${value}"
+  [ -z "${value}" ] && return
+
+  case " ${allowed_values} " in
+    *" ${value} "*) ;;
+    *) fail "${name} must be one of: ${allowed_values}" ;;
   esac
 }
 
@@ -165,6 +181,21 @@ fi
 validate_single_line RECYCLE_EXCLUDE "${RECYCLE_EXCLUDE}"
 validate_single_line RECYCLE_EXCLUDE_DIR "${RECYCLE_EXCLUDE_DIR}"
 validate_single_line SAMBA_INTERFACES "${SAMBA_INTERFACES}"
+validate_enum SMB_ENCRYPT "${SMB_ENCRYPT}" "default if_required desired required off"
+validate_enum SMB_SIGNING "${SMB_SIGNING}" "default auto mandatory disabled"
+
+# Optional: SMB transport protection
+if [ -n "${SMB_ENCRYPT}" ]; then
+  SMB_ENCRYPT_LINE="  server smb encrypt = ${SMB_ENCRYPT}"
+else
+  SMB_ENCRYPT_LINE=""
+fi
+
+if [ -n "${SMB_SIGNING}" ]; then
+  SMB_SIGNING_LINE="  server signing = ${SMB_SIGNING}"
+else
+  SMB_SIGNING_LINE=""
+fi
 
 # Optional: bind smbd to specific interfaces
 if [ -n "${SAMBA_INTERFACES}" ]; then
@@ -261,6 +292,7 @@ fi
 
 # Generate smb.conf from template
 export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE INTERFACES_LINE BIND_INTERFACES_ONLY_LINE
+export SMB_ENCRYPT_LINE SMB_SIGNING_LINE
 export SYMLINKS_LINE GUEST_LINE
 export VFS_OBJECTS RECYCLE_LINES READ_ONLY_VALUE CREATE_MASK DIRECTORY_MASK
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf

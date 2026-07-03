@@ -24,6 +24,8 @@ services:
       # RECYCLE_EXCLUDE: "*.tmp|*.temp"
       # RECYCLE_EXCLUDE_DIR: ".recycle|tmp"
       LOG_LEVEL: "1"
+      # SMB_ENCRYPT: "desired"
+      # SMB_SIGNING: "mandatory"
       # Restrict smbd listeners. Include lo if SAMBA_BIND_INTERFACES_ONLY=1 so healthcheck works.
       # SAMBA_INTERFACES: "lo eno1"
       # SAMBA_BIND_INTERFACES_ONLY: "1"

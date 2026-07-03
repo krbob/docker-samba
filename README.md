@@ -18,6 +18,8 @@ services:
       # SAMBA_PASSWORD_FILE: /run/secrets/samba_password
       # GUEST_OK: "1"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 127.0.0.0/8"
+      # SMB_ENCRYPT: "desired"
+      # SMB_SIGNING: "mandatory"
       # WSDD2_ENABLE: "1"
       # WSDD2_HOSTNAME: "homelab"
       # WSDD2_NETBIOS_NAME: "HOMELAB"
@@ -63,6 +65,8 @@ volumes:
 | `SAMBA_INTERFACES` | *(unset)* | Optional Samba listener interfaces/IPs, e.g. `lo eno1` |
 | `SAMBA_BIND_INTERFACES_ONLY` | *(unset)* | Set to `1` to bind `smbd` only to `SAMBA_INTERFACES` |
 | `SAMBA_HOSTS_ALLOW` | *(unset)* | Restrict access to specific networks (e.g. `192.168.1.0/24 127.0.0.0/8`) |
+| `SMB_ENCRYPT` | *(unset)* | Optional `server smb encrypt` value: `default`, `if_required`, `desired`, `required`, or `off` |
+| `SMB_SIGNING` | *(unset)* | Optional `server signing` value: `default`, `auto`, `mandatory`, or `disabled` |
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
 | `WSDD2_HOSTNAME` | *(unset)* | Override the hostname announced by WSDD2 |
 | `WSDD2_NETBIOS_NAME` | *(unset)* | Override the NetBIOS name announced by WSDD2 |
@@ -73,6 +77,12 @@ volumes:
 | `GUEST_OK` | *(unset)* | Set to `1` to allow anonymous access (no password required) |
 
 Set only one of `SAMBA_PASSWORD` or `SAMBA_PASSWORD_FILE`. Use one of those for authenticated access, or set `GUEST_OK=1` for an anonymous guest share. Leaving all three unset is treated as a configuration error.
+
+### SMB Transport Protection
+
+Set `SMB_ENCRYPT=desired` to encrypt traffic for clients that support SMB encryption. Set `SMB_ENCRYPT=required` only when every client supports encrypted SMB3; older or limited clients will be denied.
+
+Set `SMB_SIGNING=mandatory` to require SMB signing. This can improve integrity protection on trusted LANs, but may reduce throughput and can break very old clients.
 
 ### Symlinks
 

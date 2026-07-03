@@ -171,6 +171,35 @@ jobs:
             || { echo "Expected hosts allow in smb.conf"; docker logs samba-hosts-allow; exit 1; }
           docker exec samba-hosts-allow smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
 
+      - name: Smoke test - SMB transport protection
+        run: |
+          cleanup() {
+            docker rm -f samba-smb-protection >/dev/null 2>&1 || true
+            docker volume rm samba-smb-protection-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-smb-protection \
+            -e SAMBA_PASSWORD=test-password \
+            -e SMB_ENCRYPT=desired \
+            -e SMB_SIGNING=mandatory \
+            -v samba-smb-protection-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-smb-protection)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-smb-protection; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-smb-protection; exit 1; }
+
+          docker exec samba-smb-protection grep -Fq "server smb encrypt = desired" /etc/samba/smb.conf \
+            || { echo "Expected server smb encrypt in smb.conf"; docker logs samba-smb-protection; exit 1; }
+          docker exec samba-smb-protection grep -Fq "server signing = mandatory" /etc/samba/smb.conf \
+            || { echo "Expected server signing in smb.conf"; docker logs samba-smb-protection; exit 1; }
+          docker exec samba-smb-protection smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
+
       - name: Smoke test - optional services disabled by default
         run: |
           docker exec samba-test /command/s6-svstat /var/run/s6/legacy-services/wsdd 2>&1 | grep -q "^down" \
@@ -341,6 +370,27 @@ jobs:
           [ "$STATUS" = "exited" ] || { echo "Container should exit on multiline SAMBA_PASSWORD"; docker logs samba-multiline-password; exit 1; }
           docker logs samba-multiline-password 2>&1 | grep -q "SAMBA_PASSWORD must not contain newlines" \
             || { echo "Expected multiline password startup error"; docker logs samba-multiline-password; exit 1; }
+
+      - name: Smoke test - invalid SMB transport protection fails fast
+        run: |
+          cleanup() {
+            docker rm -f samba-invalid-smb-protection >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-invalid-smb-protection \
+            -e SAMBA_PASSWORD=test-password \
+            -e SMB_ENCRYPT=enabled \
+            local/samba:test
+
+          for i in $(seq 1 10); do
+            STATUS=$(docker inspect -f '{{.State.Status}}' samba-invalid-smb-protection)
+            [ "$STATUS" = "exited" ] && break
+            sleep 1
+          done
+          [ "$STATUS" = "exited" ] || { echo "Container should exit on invalid SMB_ENCRYPT"; docker logs samba-invalid-smb-protection; exit 1; }
+          docker logs samba-invalid-smb-protection 2>&1 | grep -q "SMB_ENCRYPT must be one of" \
+            || { echo "Expected invalid SMB_ENCRYPT startup error"; docker logs samba-invalid-smb-protection; exit 1; }
 
       - name: Smoke test - read-only share blocks writes
         run: |

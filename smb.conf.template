@@ -11,6 +11,8 @@
   # Security
   security = user
   map to guest = Bad User
+${SMB_ENCRYPT_LINE}
+${SMB_SIGNING_LINE}
 ${HOSTS_ALLOW_LINE}
 ${INTERFACES_LINE}
 ${BIND_INTERFACES_ONLY_LINE}

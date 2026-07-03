@@ -40,6 +40,19 @@ jobs:
           cache-from: type=gha,scope=samba-image
           cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
 
+      - name: Scan image with Trivy
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.72.0 image \
+              --exit-code 1 \
+              --severity CRITICAL \
+              --ignore-unfixed \
+              --scanners vuln \
+              --pkg-types os \
+              --no-progress \
+              local/samba:test
+
       - name: Start test container
         run: docker compose -f docker-compose-test.yml up -d --no-build
 

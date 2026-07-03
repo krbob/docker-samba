@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Lint shell scripts
         run: |
           docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable \
@@ -28,8 +31,17 @@ jobs:
       - name: Lint Dockerfile
         run: docker run --rm -i hadolint/hadolint:v2.12.0 /bin/hadolint --ignore DL3008 - < Dockerfile
 
-      - name: Build and start container
-        run: docker compose -f docker-compose-test.yml up -d --build
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: local/samba:test
+          cache-from: type=gha,scope=samba-image
+          cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
+
+      - name: Start test container
+        run: docker compose -f docker-compose-test.yml up -d --no-build
 
       - name: Wait for container to be healthy
         run: |
@@ -319,6 +331,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha,scope=samba-image
+          cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
           tags: |
             ${{ steps.image.outputs.image }}:${{ steps.image.outputs.sha_tag }}
             ${{ steps.image.outputs.image }}:latest

@@ -58,12 +58,14 @@ write_healthcheck_auth() {
   install -d -m 0700 /run/samba
 
   if [ -n "${SAMBA_PASSWORD}" ]; then
-    umask 077
-    {
-      printf 'username = samba\n'
-      printf 'password = %s\n' "${SAMBA_PASSWORD}"
-      printf 'domain = %s\n' "${WORKGROUP}"
-    } > "${HEALTHCHECK_AUTH_FILE}"
+    (
+      umask 077
+      {
+        printf 'username = samba\n'
+        printf 'password = %s\n' "${SAMBA_PASSWORD}"
+        printf 'domain = %s\n' "${WORKGROUP}"
+      } > "${HEALTHCHECK_AUTH_FILE}"
+    )
   else
     rm -f "${HEALTHCHECK_AUTH_FILE}"
   fi

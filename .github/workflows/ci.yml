@@ -512,6 +512,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
+          provenance: mode=max
           cache-from: type=gha,scope=samba-image
           cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
           tags: |

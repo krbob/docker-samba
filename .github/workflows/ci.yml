@@ -283,6 +283,9 @@ jobs:
           docker run -d --name samba-options \
             -e SAMBA_PASSWORD=test-password \
             -e RECYCLE_ENABLE=1 \
+            -e RECYCLE_MAX_SIZE=1024 \
+            -e RECYCLE_EXCLUDE='*.tmp|*.temp' \
+            -e RECYCLE_EXCLUDE_DIR='.recycle|tmp' \
             -e CREATE_MASK=0640 \
             -e DIRECTORY_MASK=0750 \
             -v samba-options-data:/share \
@@ -303,6 +306,13 @@ jobs:
           FILE_MODE=$(docker exec samba-options stat -c '%a' /share/maskdir/mask-file.txt)
           [ "$DIR_MODE" = "750" ] || { echo "Expected directory mode 750, got $DIR_MODE"; exit 1; }
           [ "$FILE_MODE" = "640" ] || { echo "Expected file mode 640, got $FILE_MODE"; exit 1; }
+          CONFIG=$(docker exec samba-options testparm -s /etc/samba/smb.conf 2>/dev/null)
+          echo "$CONFIG" | grep -Fq "recycle:maxsize = 1024" \
+            || { echo "Expected recycle:maxsize in smb.conf"; docker logs samba-options; exit 1; }
+          echo "$CONFIG" | grep -Fq "recycle:exclude = *.tmp|*.temp" \
+            || { echo "Expected recycle:exclude in smb.conf"; docker logs samba-options; exit 1; }
+          echo "$CONFIG" | grep -Fq "recycle:exclude_dir = .recycle|tmp" \
+            || { echo "Expected recycle:exclude_dir in smb.conf"; docker logs samba-options; exit 1; }
 
           docker exec samba-options smbclient -U samba%test-password //127.0.0.1/public \
             -c 'del maskdir/mask-file.txt' 2>&1

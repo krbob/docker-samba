@@ -54,6 +54,9 @@ volumes:
 | `DIRECTORY_MASK` | `0775` | Directory mode mask for newly created directories |
 | `RECYCLE_ENABLE` | *(unset)* | Set to `1` to move SMB-deleted files into a recycle directory |
 | `RECYCLE_REPOSITORY` | `.recycle` | Relative recycle directory inside `SHARE_PATH` |
+| `RECYCLE_MAX_SIZE` | *(unset)* | Optional maximum file size, in bytes, that is moved to recycle (`0` means no per-file limit) |
+| `RECYCLE_EXCLUDE` | *(unset)* | Optional recycle exclude patterns, separated by `|` |
+| `RECYCLE_EXCLUDE_DIR` | *(unset)* | Optional recycle directory exclude patterns, separated by `|` |
 | `SAMBA_PASSWORD` | *(required unless `SAMBA_PASSWORD_FILE` or `GUEST_OK=1`)* | Password for the `samba` user |
 | `SAMBA_PASSWORD_FILE` | *(unset)* | Read the Samba password from a file, such as `/run/secrets/samba_password` |
 | `LOG_LEVEL` | `1` | Log verbosity (0=minimal, 3=debug) |
@@ -103,7 +106,7 @@ When using a bind mount, set `FORCE_USER_UID` and `FORCE_GROUP_GID` to match the
 
 The container always ensures `SHARE_PATH` exists and is owned by `samba`, but it no longer changes the directory mode unless `SHARE_DIR_MODE` is set explicitly.
 
-If `RECYCLE_ENABLE=1` is set, files deleted through SMB are moved under `RECYCLE_REPOSITORY` with the original directory tree preserved. `RECYCLE_REPOSITORY` must be a relative path inside `SHARE_PATH`.
+If `RECYCLE_ENABLE=1` is set, files deleted through SMB are moved under `RECYCLE_REPOSITORY` with the original directory tree preserved. `RECYCLE_REPOSITORY` must be a relative path inside `SHARE_PATH`. The recycle directory is not purged automatically; clean it manually or use `RECYCLE_EXCLUDE`, `RECYCLE_EXCLUDE_DIR`, and `RECYCLE_MAX_SIZE` to reduce what is kept.
 
 ## Notes
 

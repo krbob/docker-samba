@@ -228,6 +228,35 @@ jobs:
           echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD' \
             && { echo "Healthcheck must not expose the Samba password in argv"; exit 1; }
 
+      - name: Smoke test - bind interfaces
+        run: |
+          cleanup() {
+            docker rm -f samba-bind-interfaces >/dev/null 2>&1 || true
+            docker volume rm samba-bind-interfaces-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-bind-interfaces \
+            -e SAMBA_PASSWORD=test-password \
+            -e SAMBA_INTERFACES=lo \
+            -e SAMBA_BIND_INTERFACES_ONLY=1 \
+            -v samba-bind-interfaces-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-bind-interfaces)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-bind-interfaces; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-bind-interfaces; exit 1; }
+
+          CONFIG=$(docker exec samba-bind-interfaces testparm -s /etc/samba/smb.conf 2>/dev/null)
+          echo "$CONFIG" | grep -Fq "interfaces = lo" \
+            || { echo "Expected interfaces in smb.conf"; docker logs samba-bind-interfaces; exit 1; }
+          echo "$CONFIG" | grep -Fq "bind interfaces only = Yes" \
+            || { echo "Expected bind interfaces only in smb.conf"; docker logs samba-bind-interfaces; exit 1; }
+
       - name: Smoke test - multiline password fails fast
         run: |
           cleanup() {

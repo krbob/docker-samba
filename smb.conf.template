@@ -12,6 +12,8 @@
   security = user
   map to guest = Bad User
 ${HOSTS_ALLOW_LINE}
+${INTERFACES_LINE}
+${BIND_INTERFACES_ONLY_LINE}
   # Disable unnecessary services
   disable netbios = yes
   smb ports = 445

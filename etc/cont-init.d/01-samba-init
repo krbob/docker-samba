@@ -11,6 +11,8 @@ set -e
 : "${FORCE_GROUP_GID:=1000}"
 : "${SHARE_DIR_MODE:=}"
 : "${LOG_LEVEL:=1}"
+: "${SAMBA_INTERFACES:=}"
+: "${SAMBA_BIND_INTERFACES_ONLY:=}"
 : "${SAMBA_PASSWORD:=}"
 : "${SAMBA_PASSWORD_FILE:=}"
 : "${READ_ONLY:=}"
@@ -65,6 +67,13 @@ validate_relative_path() {
   validate_single_line "${name}" "${value}"
   case "${value}" in
     "" | /* | .. | ../* | */.. | */../*) fail "${name} must be a relative path inside SHARE_PATH" ;;
+  esac
+}
+
+interfaces_include_loopback() {
+  case " ${SAMBA_INTERFACES} " in
+    *" lo "* | *" 127."* | *" localhost "*) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -155,6 +164,22 @@ if [ -n "${RECYCLE_MAX_SIZE}" ]; then
 fi
 validate_single_line RECYCLE_EXCLUDE "${RECYCLE_EXCLUDE}"
 validate_single_line RECYCLE_EXCLUDE_DIR "${RECYCLE_EXCLUDE_DIR}"
+validate_single_line SAMBA_INTERFACES "${SAMBA_INTERFACES}"
+
+# Optional: bind smbd to specific interfaces
+if [ -n "${SAMBA_INTERFACES}" ]; then
+  INTERFACES_LINE="  interfaces = ${SAMBA_INTERFACES}"
+else
+  INTERFACES_LINE=""
+fi
+
+if [ "${SAMBA_BIND_INTERFACES_ONLY}" = "1" ]; then
+  [ -n "${SAMBA_INTERFACES}" ] || fail "SAMBA_BIND_INTERFACES_ONLY=1 requires SAMBA_INTERFACES"
+  interfaces_include_loopback || fail "SAMBA_INTERFACES must include lo or 127.x.x.x when SAMBA_BIND_INTERFACES_ONLY=1"
+  BIND_INTERFACES_ONLY_LINE="  bind interfaces only = yes"
+else
+  BIND_INTERFACES_ONLY_LINE=""
+fi
 
 if [ "${GUEST_OK}" = "1" ]; then
   if [ -n "${SAMBA_PASSWORD}" ]; then
@@ -235,7 +260,8 @@ else
 fi
 
 # Generate smb.conf from template
-export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE SYMLINKS_LINE GUEST_LINE
+export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE INTERFACES_LINE BIND_INTERFACES_ONLY_LINE
+export SYMLINKS_LINE GUEST_LINE
 export VFS_OBJECTS RECYCLE_LINES READ_ONLY_VALUE CREATE_MASK DIRECTORY_MASK
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 

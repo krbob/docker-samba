@@ -24,6 +24,9 @@ services:
       # RECYCLE_EXCLUDE: "*.tmp|*.temp"
       # RECYCLE_EXCLUDE_DIR: ".recycle|tmp"
       LOG_LEVEL: "1"
+      # Restrict smbd listeners. Include lo if SAMBA_BIND_INTERFACES_ONLY=1 so healthcheck works.
+      # SAMBA_INTERFACES: "lo eno1"
+      # SAMBA_BIND_INTERFACES_ONLY: "1"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 10.13.13.0/24 127.0.0.0/8"
       # WSDD2_ENABLE: "1"
       # WSDD2_HOSTNAME: "homelab"

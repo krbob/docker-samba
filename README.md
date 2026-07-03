@@ -60,6 +60,8 @@ volumes:
 | `SAMBA_PASSWORD` | *(required unless `SAMBA_PASSWORD_FILE` or `GUEST_OK=1`)* | Password for the `samba` user |
 | `SAMBA_PASSWORD_FILE` | *(unset)* | Read the Samba password from a file, such as `/run/secrets/samba_password` |
 | `LOG_LEVEL` | `1` | Log verbosity (0=minimal, 3=debug) |
+| `SAMBA_INTERFACES` | *(unset)* | Optional Samba listener interfaces/IPs, e.g. `lo eno1` |
+| `SAMBA_BIND_INTERFACES_ONLY` | *(unset)* | Set to `1` to bind `smbd` only to `SAMBA_INTERFACES` |
 | `SAMBA_HOSTS_ALLOW` | *(unset)* | Restrict access to specific networks (e.g. `192.168.1.0/24 127.0.0.0/8`) |
 | `WSDD2_ENABLE` | *(unset)* | Set to `1` to enable WSDD2 (Windows network discovery) |
 | `WSDD2_HOSTNAME` | *(unset)* | Override the hostname announced by WSDD2 |
@@ -92,6 +94,10 @@ cap_add:
 ```
 
 Both discovery methods require `network_mode: host` (see compose example above).
+
+## Network Binding
+
+With `network_mode: host`, Docker does not restrict port 445 to selected host interfaces. Set `SAMBA_INTERFACES` and `SAMBA_BIND_INTERFACES_ONLY=1` to make `smbd` listen only on specific interfaces. Include `lo` or a `127.x.x.x` address because the container healthcheck connects to `127.0.0.1`.
 
 ## Storage
 

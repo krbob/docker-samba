@@ -144,6 +144,33 @@ jobs:
           grep -Eqi "NT_STATUS_ACCESS_DENIED|Access denied|tree connect failed" /tmp/guest-output.txt \
             || { echo "Expected guest access denial message"; exit 1; }
 
+      - name: Smoke test - hosts allow
+        run: |
+          cleanup() {
+            docker rm -f samba-hosts-allow >/dev/null 2>&1 || true
+            docker volume rm samba-hosts-allow-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-hosts-allow \
+            -e SAMBA_PASSWORD=test-password \
+            -e SAMBA_HOSTS_ALLOW="127.0.0.0/8" \
+            -v samba-hosts-allow-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-hosts-allow)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-hosts-allow; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-hosts-allow; exit 1; }
+
+          CONFIG=$(docker exec samba-hosts-allow testparm -s /etc/samba/smb.conf 2>/dev/null)
+          echo "$CONFIG" | grep -Fq "hosts allow = 127.0.0.0/8" \
+            || { echo "Expected hosts allow in smb.conf"; docker logs samba-hosts-allow; exit 1; }
+          docker exec samba-hosts-allow smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
+
       - name: Smoke test - optional services disabled by default
         run: |
           docker exec samba-test /command/s6-svstat /var/run/s6/legacy-services/wsdd 2>&1 | grep -q "^down" \
@@ -257,6 +284,41 @@ jobs:
           echo "$CONFIG" | grep -Fq "bind interfaces only = Yes" \
             || { echo "Expected bind interfaces only in smb.conf"; docker logs samba-bind-interfaces; exit 1; }
 
+      - name: Smoke test - follow symlinks
+        run: |
+          cleanup() {
+            docker rm -f samba-symlinks >/dev/null 2>&1 || true
+            docker volume rm samba-symlinks-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-symlinks \
+            -e SAMBA_PASSWORD=test-password \
+            -e FOLLOW_SYMLINKS=1 \
+            -v samba-symlinks-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-symlinks)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-symlinks; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-symlinks; exit 1; }
+
+          CONFIG=$(docker exec samba-symlinks testparm -s /etc/samba/smb.conf 2>/dev/null)
+          echo "$CONFIG" | grep -Fq "wide links = Yes" \
+            || { echo "Expected wide links in smb.conf"; docker logs samba-symlinks; exit 1; }
+          echo "$CONFIG" | grep -Fq "smb1 unix extensions = No" \
+            || { echo "Expected unix extensions disabled in smb.conf"; docker logs samba-symlinks; exit 1; }
+          docker exec samba-symlinks grep -Fq "follow symlinks = yes" /etc/samba/smb.conf \
+            || { echo "Expected follow symlinks in smb.conf"; docker logs samba-symlinks; exit 1; }
+
+          docker exec samba-symlinks sh -c 'printf "%s\n" linked-target > /tmp/outside-share.txt && ln -s /tmp/outside-share.txt /share/outside-link.txt'
+          docker exec samba-symlinks smbclient -U samba%test-password //127.0.0.1/public \
+            -c 'get outside-link.txt /tmp/symlink-download.txt' 2>&1
+          docker exec samba-symlinks grep -q "linked-target" /tmp/symlink-download.txt
+
       - name: Smoke test - multiline password fails fast
         run: |
           cleanup() {
@@ -358,6 +420,38 @@ jobs:
           docker exec samba-options smbclient -U samba%test-password //127.0.0.1/public \
             -c 'del maskdir/mask-file.txt' 2>&1
           docker exec samba-options test -f /share/.recycle/maskdir/mask-file.txt
+
+      - name: Smoke test - bind mount UID/GID
+        run: |
+          cleanup() {
+            docker rm -f samba-bind-uid >/dev/null 2>&1 || true
+            rm -rf /tmp/samba-bind-uid-test
+          }
+          trap cleanup EXIT
+
+          mkdir -p /tmp/samba-bind-uid-test
+          docker run -d --name samba-bind-uid \
+            -e SAMBA_PASSWORD=test-password \
+            -e FORCE_USER_UID=1234 \
+            -e FORCE_GROUP_GID=1234 \
+            -v /tmp/samba-bind-uid-test:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-bind-uid)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-bind-uid; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-bind-uid; exit 1; }
+
+          docker exec samba-bind-uid smbclient -U samba%test-password //127.0.0.1/public \
+            -c 'put /etc/hostname uid-test.txt' 2>&1
+          SAMBA_UID=$(docker exec samba-bind-uid id -u samba)
+          SAMBA_GID=$(docker exec samba-bind-uid id -g samba)
+          [ "$SAMBA_UID:$SAMBA_GID" = "1234:1234" ] \
+            || { echo "Expected samba UID:GID 1234:1234, got $SAMBA_UID:$SAMBA_GID"; docker logs samba-bind-uid; exit 1; }
+          docker exec samba-bind-uid test -f /share/uid-test.txt
 
       - name: Smoke test - invalid UID/GID fails fast
         run: |

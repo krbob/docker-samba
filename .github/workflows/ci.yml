@@ -277,12 +277,24 @@ jobs:
           done
           [ "$HEALTH" = "healthy" ] || { docker logs samba-password-file; exit 1; }
 
-          docker exec samba-password-file smbclient -U samba%file-password //127.0.0.1/public \
-            -c 'put /etc/hostname password-file.txt' 2>&1
-          docker exec samba-password-file test -f /run/samba/healthcheck.auth
+          set +e
+          SMBCLIENT_OUTPUT=$(docker exec samba-password-file smbclient -U samba%file-password //127.0.0.1/public \
+            -c 'put /etc/hostname password-file.txt' 2>&1)
+          SMBCLIENT_STATUS=$?
+          set -e
+          echo "$SMBCLIENT_OUTPUT"
+          docker exec samba-password-file cmp -s /etc/hostname /share/password-file.txt \
+            || { echo "Password-file upload did not create the expected file"; docker logs samba-password-file; docker exec samba-password-file ls -la /run/samba /share; exit 1; }
+          if [ "$SMBCLIENT_STATUS" -ne 0 ]; then
+            echo "smbclient exited with status $SMBCLIENT_STATUS after creating the expected file"
+          fi
+          docker exec samba-password-file test -s /run/samba/healthcheck.auth \
+            || { echo "Expected healthcheck auth file"; docker logs samba-password-file; docker exec samba-password-file ls -la /run/samba /share; exit 1; }
           HEALTHCHECK=$(docker inspect -f '{{json .Config.Healthcheck.Test}}' samba-password-file)
-          echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD' \
-            && { echo "Healthcheck must not expose the Samba password in argv"; exit 1; }
+          if echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD'; then
+            echo "Healthcheck must not expose the Samba password in argv"
+            exit 1
+          fi
 
       - name: Smoke test - bind interfaces
         run: |

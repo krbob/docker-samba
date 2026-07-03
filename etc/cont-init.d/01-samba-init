@@ -11,8 +11,48 @@ set -e
 : "${SHARE_DIR_MODE:=}"
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_PASSWORD:=}"
+: "${READ_ONLY:=}"
+: "${CREATE_MASK:=0664}"
+: "${DIRECTORY_MASK:=0775}"
+: "${RECYCLE_ENABLE:=}"
+: "${RECYCLE_REPOSITORY:=.recycle}"
 
 HEALTHCHECK_AUTH_FILE="/run/samba/healthcheck.auth"
+
+fail() {
+  echo "$*" >&2
+  exit 1
+}
+
+validate_octal_mode() {
+  name="$1"
+  value="$2"
+
+  case "${value}" in
+    [0-7][0-7][0-7] | [0-7][0-7][0-7][0-7]) ;;
+    *) fail "${name} must be a 3- or 4-digit octal mode" ;;
+  esac
+}
+
+validate_single_line() {
+  name="$1"
+  value="$2"
+
+  case "${value}" in
+    *'
+'*) fail "${name} must not contain newlines" ;;
+  esac
+}
+
+validate_relative_path() {
+  name="$1"
+  value="$2"
+
+  validate_single_line "${name}" "${value}"
+  case "${value}" in
+    "" | /* | .. | ../* | */.. | */../*) fail "${name} must be a relative path inside SHARE_PATH" ;;
+  esac
+}
 
 ensure_samba_group() {
   if getent group samba >/dev/null; then
@@ -75,6 +115,10 @@ write_healthcheck_auth() {
 ensure_samba_group
 ensure_samba_user
 
+validate_octal_mode CREATE_MASK "${CREATE_MASK}"
+validate_octal_mode DIRECTORY_MASK "${DIRECTORY_MASK}"
+validate_relative_path RECYCLE_REPOSITORY "${RECYCLE_REPOSITORY}"
+
 if [ "${GUEST_OK}" = "1" ]; then
   if [ -n "${SAMBA_PASSWORD}" ]; then
     printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
@@ -113,6 +157,25 @@ else
   GUEST_LINE="  valid users = samba"
 fi
 
+# Optional: read-only share
+if [ "${READ_ONLY}" = "1" ]; then
+  READ_ONLY_VALUE="yes"
+else
+  READ_ONLY_VALUE="no"
+fi
+
+# Optional: recycle bin for SMB deletes
+VFS_OBJECTS="fruit streams_xattr"
+if [ "${RECYCLE_ENABLE}" = "1" ]; then
+  VFS_OBJECTS="recycle ${VFS_OBJECTS}"
+  RECYCLE_LINES="  recycle:repository = ${RECYCLE_REPOSITORY}
+  recycle:keeptree = yes
+  recycle:versions = yes
+  recycle:touch = yes"
+else
+  RECYCLE_LINES=""
+fi
+
 # Optional: follow symlinks
 if [ "${FOLLOW_SYMLINKS}" = "1" ]; then
   SYMLINKS_LINE="  follow symlinks = yes
@@ -124,6 +187,7 @@ fi
 
 # Generate smb.conf from template
 export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE SYMLINKS_LINE GUEST_LINE
+export VFS_OBJECTS RECYCLE_LINES READ_ONLY_VALUE CREATE_MASK DIRECTORY_MASK
 envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
 
 # Optional: restrict Avahi to specific interfaces

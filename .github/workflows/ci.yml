@@ -143,6 +143,75 @@ jobs:
           docker rm -f samba-guest
           docker volume rm samba-guest-data
 
+      - name: Smoke test - read-only share blocks writes
+        run: |
+          cleanup() {
+            docker rm -f samba-readonly >/dev/null 2>&1 || true
+            docker volume rm samba-readonly-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-readonly \
+            -e SAMBA_PASSWORD=test-password \
+            -e READ_ONLY=1 \
+            -v samba-readonly-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-readonly)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-readonly; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-readonly; exit 1; }
+
+          docker exec samba-readonly smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
+          if docker exec samba-readonly smbclient -U samba%test-password //127.0.0.1/public \
+            -c 'put /etc/hostname readonly.txt' >/tmp/readonly-output.txt 2>&1; then
+            echo "Read-only share should reject writes"
+            cat /tmp/readonly-output.txt
+            exit 1
+          fi
+          cat /tmp/readonly-output.txt
+          grep -Eqi "NT_STATUS_ACCESS_DENIED|Access denied|NT_STATUS_MEDIA_WRITE_PROTECTED" /tmp/readonly-output.txt \
+            || { echo "Expected write denial message"; exit 1; }
+
+      - name: Smoke test - recycle bin and create masks
+        run: |
+          cleanup() {
+            docker rm -f samba-options >/dev/null 2>&1 || true
+            docker volume rm samba-options-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name samba-options \
+            -e SAMBA_PASSWORD=test-password \
+            -e RECYCLE_ENABLE=1 \
+            -e CREATE_MASK=0640 \
+            -e DIRECTORY_MASK=0750 \
+            -v samba-options-data:/share \
+            local/samba:test
+
+          for i in $(seq 1 30); do
+            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-options)
+            [ "$HEALTH" = "healthy" ] && break
+            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-options; exit 1; }
+            sleep 1
+          done
+          [ "$HEALTH" = "healthy" ] || { docker logs samba-options; exit 1; }
+
+          docker exec samba-options smbclient -U samba%test-password //127.0.0.1/public \
+            -c 'mkdir maskdir; put /etc/hostname maskdir/mask-file.txt' 2>&1
+
+          DIR_MODE=$(docker exec samba-options stat -c '%a' /share/maskdir)
+          FILE_MODE=$(docker exec samba-options stat -c '%a' /share/maskdir/mask-file.txt)
+          [ "$DIR_MODE" = "750" ] || { echo "Expected directory mode 750, got $DIR_MODE"; exit 1; }
+          [ "$FILE_MODE" = "640" ] || { echo "Expected file mode 640, got $FILE_MODE"; exit 1; }
+
+          docker exec samba-options smbclient -U samba%test-password //127.0.0.1/public \
+            -c 'del maskdir/mask-file.txt' 2>&1
+          docker exec samba-options test -f /share/.recycle/maskdir/mask-file.txt
+
       - name: Smoke test - invalid UID/GID fails fast
         run: |
           docker run -d --name samba-invalid \

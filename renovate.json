@@ -1,10 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "automerge": true,
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Update s6-overlay releases",
       "managerFilePatterns": [
         "/^Dockerfile$/"
       ],
@@ -13,6 +13,33 @@
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.*)$",
       "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "Update digest-pinned CI tool images",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "(?:ACTIONLINT_IMAGE|HADOLINT_IMAGE|SHELLCHECK_IMAGE|TRIVY_IMAGE):\\s*(?<depName>rhysd/actionlint|hadolint/hadolint|koalaman/shellcheck|aquasec/trivy):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge digest and patch updates after CI passes",
+      "matchUpdateTypes": ["digest", "patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false,
+      "ignoreTests": false
+    },
+    {
+      "description": "Require manual review for minor and major updates",
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false
     }
   ]
 }

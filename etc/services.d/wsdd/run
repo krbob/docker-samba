@@ -1,7 +1,8 @@
 #!/command/with-contenv sh
 # shellcheck shell=sh
 
-case "${WSDD2_ENABLE:-0}" in
+wsdd2_enable="$(printf '%s' "${WSDD2_ENABLE:-0}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+case "${wsdd2_enable}" in
   1|true|yes|on)
     ;;
   0|false|no|off|'')
@@ -16,7 +17,8 @@ esac
 
 set --
 
-case "${WSDD2_LLMNR_ENABLE:-0}" in
+wsdd2_llmnr_enable="$(printf '%s' "${WSDD2_LLMNR_ENABLE:-0}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+case "${wsdd2_llmnr_enable}" in
   1|true|yes|on)
     ;;
   0|false|no|off|'')

@@ -12,25 +12,55 @@ set -e
 : "${SHARE_DIR_MODE:=}"
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_INTERFACES:=}"
-: "${SAMBA_BIND_INTERFACES_ONLY:=}"
+: "${SAMBA_BIND_INTERFACES_ONLY:=0}"
 : "${SMB_ENCRYPT:=}"
 : "${SMB_SIGNING:=}"
 : "${SAMBA_PASSWORD:=}"
 : "${SAMBA_PASSWORD_FILE:=}"
-: "${READ_ONLY:=}"
+: "${READ_ONLY:=0}"
 : "${CREATE_MASK:=0664}"
 : "${DIRECTORY_MASK:=0775}"
-: "${RECYCLE_ENABLE:=}"
+: "${RECYCLE_ENABLE:=0}"
 : "${RECYCLE_REPOSITORY:=.recycle}"
 : "${RECYCLE_MAX_SIZE:=}"
 : "${RECYCLE_EXCLUDE:=}"
 : "${RECYCLE_EXCLUDE_DIR:=}"
+: "${SAMBA_HOSTS_ALLOW:=}"
+: "${ALLOWED_INTERFACES:=}"
+: "${FOLLOW_SYMLINKS:=0}"
+: "${GUEST_OK:=0}"
+: "${MANAGE_SHARE_PERMISSIONS:=1}"
+: "${WSDD2_ENABLE:=0}"
+: "${WSDD2_LLMNR_ENABLE:=0}"
+: "${AVAHI_ENABLE:=0}"
 
 HEALTHCHECK_AUTH_FILE="/run/samba/healthcheck.auth"
+SMB_CONF_TMP=""
+HEALTHCHECK_AUTH_TMP=""
+CARRIAGE_RETURN="$(printf '\r')"
+
+cleanup() {
+  [ -z "${SMB_CONF_TMP}" ] || rm -f "${SMB_CONF_TMP}"
+  [ -z "${HEALTHCHECK_AUTH_TMP}" ] || rm -f "${HEALTHCHECK_AUTH_TMP}"
+}
+
+trap cleanup 0
+trap 'exit 1' HUP INT TERM
 
 fail() {
   echo "$*" >&2
   exit 1
+}
+
+validate_single_line() {
+  name="$1"
+  value="$2"
+
+  case "${value}" in
+    *'
+'* | *"${CARRIAGE_RETURN}"*) fail "${name} must not contain newlines" ;;
+    *[[:cntrl:]]*) fail "${name} must not contain control characters" ;;
+  esac
 }
 
 validate_octal_mode() {
@@ -52,14 +82,16 @@ validate_unsigned_integer() {
   esac
 }
 
-validate_single_line() {
+validate_canonical_id() {
   name="$1"
   value="$2"
 
+  validate_unsigned_integer "${name}" "${value}"
   case "${value}" in
-    *'
-'*) fail "${name} must not contain newlines" ;;
+    0 | 0*) fail "${name} must be a non-zero canonical decimal integer" ;;
   esac
+  [ "${value}" -le 4294967294 ] 2>/dev/null \
+    || fail "${name} must not exceed 4294967294"
 }
 
 validate_enum() {
@@ -76,19 +108,95 @@ validate_enum() {
   esac
 }
 
+normalize_boolean() {
+  name="$1"
+  value="$2"
+
+  validate_single_line "${name}" "${value}"
+  value="$(printf '%s' "${value}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+  case "${value}" in
+    1 | true | yes | on) printf '1\n' ;;
+    0 | false | no | off) printf '0\n' ;;
+    *) fail "${name} must be one of: 0, 1, false, true, no, yes, off, on" ;;
+  esac
+}
+
+validate_share_name() {
+  value="$1"
+
+  validate_single_line SHARE_NAME "${value}"
+  case "${value}" in
+    "" | " "* | *" ") fail "SHARE_NAME must not be empty or have leading/trailing spaces" ;;
+    *[!A-Za-z0-9._\ -]*) fail "SHARE_NAME may contain only ASCII letters, digits, spaces, '.', '_' and '-'" ;;
+  esac
+  [ "${#value}" -le 80 ] || fail "SHARE_NAME must not exceed 80 characters"
+
+  value="$(printf '%s' "${value}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+  case "${value}" in
+    . | .. | global | homes | printers) fail "SHARE_NAME uses a reserved Samba section name" ;;
+  esac
+}
+
+validate_share_path() {
+  value="$1"
+
+  validate_single_line SHARE_PATH "${value}"
+  case "${value}" in
+    /*) ;;
+    *) fail "SHARE_PATH must be an absolute path" ;;
+  esac
+
+  resolved_share_path="$(realpath -m -- "${value}")" \
+    || fail "SHARE_PATH could not be resolved"
+  [ "${resolved_share_path}" != "/" ] || fail "SHARE_PATH must not resolve to /"
+}
+
+validate_workgroup() {
+  value="$1"
+
+  validate_single_line WORKGROUP "${value}"
+  case "${value}" in
+    "" | *[!A-Za-z0-9_-]*) fail "WORKGROUP may contain only ASCII letters, digits, '_' and '-'" ;;
+  esac
+  [ "${#value}" -le 15 ] || fail "WORKGROUP must not exceed 15 characters"
+}
+
 validate_relative_path() {
   name="$1"
   value="$2"
 
   validate_single_line "${name}" "${value}"
   case "${value}" in
-    "" | /* | .. | ../* | */.. | */../*) fail "${name} must be a relative path inside SHARE_PATH" ;;
+    "" | . | .. | /* | ./* | ../* | */. | */.. | */./* | */../*)
+      fail "${name} must be a relative path inside SHARE_PATH and must not contain '.' or '..' components"
+      ;;
   esac
+}
+
+validate_allowed_interfaces() {
+  value="$1"
+
+  validate_single_line ALLOWED_INTERFACES "${value}"
+  [ -z "${value}" ] && return
+  case "${value}" in
+    ,* | *, | *,,* | *[!-A-Za-z0-9_,.:]*)
+      fail "ALLOWED_INTERFACES must be a comma-separated list of interface names"
+      ;;
+  esac
+
+  interface_list="${value},"
+  while [ -n "${interface_list}" ]; do
+    interface_name="${interface_list%%,*}"
+    interface_list="${interface_list#*,}"
+    [ -n "${interface_name}" ] || fail "ALLOWED_INTERFACES must not contain empty entries"
+    [ "${#interface_name}" -le 15 ] \
+      || fail "ALLOWED_INTERFACES entry '${interface_name}' must not exceed 15 characters"
+  done
 }
 
 interfaces_include_loopback() {
   case " ${SAMBA_INTERFACES} " in
-    *" lo "* | *" 127."* | *" localhost "*) return 0 ;;
+    *" lo "* | *" 127."* | *" localhost "* | *" ::1 "*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -98,80 +206,115 @@ load_samba_password() {
     fail "Set only one of SAMBA_PASSWORD or SAMBA_PASSWORD_FILE"
   fi
 
+  validate_single_line SAMBA_PASSWORD_FILE "${SAMBA_PASSWORD_FILE}"
   if [ -n "${SAMBA_PASSWORD_FILE}" ]; then
     [ -r "${SAMBA_PASSWORD_FILE}" ] || fail "SAMBA_PASSWORD_FILE is not readable: ${SAMBA_PASSWORD_FILE}"
 
-    IFS= read -r SAMBA_PASSWORD < "${SAMBA_PASSWORD_FILE}" || [ -n "${SAMBA_PASSWORD}" ]
+    password_first_line=""
+    password_extra_line=""
+    if {
+      IFS= read -r password_first_line || [ -n "${password_first_line}" ]
+      IFS= read -r password_extra_line || [ -n "${password_extra_line}" ]
+    } < "${SAMBA_PASSWORD_FILE}"; then
+      fail "SAMBA_PASSWORD_FILE must contain exactly one line"
+    fi
+    SAMBA_PASSWORD="${password_first_line}"
     [ -n "${SAMBA_PASSWORD}" ] || fail "SAMBA_PASSWORD_FILE is empty: ${SAMBA_PASSWORD_FILE}"
   fi
 
   if [ -n "${SAMBA_PASSWORD}" ]; then
     validate_single_line SAMBA_PASSWORD "${SAMBA_PASSWORD}"
+    case "${SAMBA_PASSWORD}" in
+      [[:space:]]* | *[[:space:]])
+        fail "SAMBA_PASSWORD must not begin or end with whitespace"
+        ;;
+    esac
   fi
 }
 
-ensure_samba_group() {
-  if getent group samba >/dev/null; then
-    current_gid="$(getent group samba | cut -d: -f3)"
-    if [ "${current_gid}" != "${FORCE_GROUP_GID}" ]; then
-      echo "Group samba already exists with GID ${current_gid}, expected ${FORCE_GROUP_GID}" >&2
-      exit 1
+validate_samba_identity() {
+  samba_group_entry="$(getent group samba || true)"
+  if [ -n "${samba_group_entry}" ]; then
+    current_gid="$(printf '%s\n' "${samba_group_entry}" | cut -d: -f3)"
+    [ "${current_gid}" = "${FORCE_GROUP_GID}" ] \
+      || fail "Group samba already exists with GID ${current_gid}, expected ${FORCE_GROUP_GID}"
+  else
+    existing_group="$(getent group "${FORCE_GROUP_GID}" | cut -d: -f1 || true)"
+    [ -z "${existing_group}" ] \
+      || fail "Requested FORCE_GROUP_GID=${FORCE_GROUP_GID} already belongs to group ${existing_group}"
+  fi
+
+  samba_user_entry="$(getent passwd samba || true)"
+  if [ -n "${samba_user_entry}" ]; then
+    current_uid="$(printf '%s\n' "${samba_user_entry}" | cut -d: -f3)"
+    current_gid="$(printf '%s\n' "${samba_user_entry}" | cut -d: -f4)"
+    if [ "${current_uid}" != "${FORCE_USER_UID}" ] || [ "${current_gid}" != "${FORCE_GROUP_GID}" ]; then
+      fail "User samba already exists with UID:GID ${current_uid}:${current_gid}, expected ${FORCE_USER_UID}:${FORCE_GROUP_GID}"
     fi
-    return
+  else
+    existing_user="$(getent passwd "${FORCE_USER_UID}" | cut -d: -f1 || true)"
+    [ -z "${existing_user}" ] \
+      || fail "Requested FORCE_USER_UID=${FORCE_USER_UID} already belongs to user ${existing_user}"
   fi
-
-  existing_group="$(getent group "${FORCE_GROUP_GID}" | cut -d: -f1 || true)"
-  if [ -n "${existing_group}" ]; then
-    echo "Requested FORCE_GROUP_GID=${FORCE_GROUP_GID} already belongs to group ${existing_group}" >&2
-    exit 1
-  fi
-
-  groupadd -g "${FORCE_GROUP_GID}" samba
 }
 
-ensure_samba_user() {
-  if getent passwd samba >/dev/null; then
-    current_uid="$(getent passwd samba | cut -d: -f3)"
-    current_gid="$(getent passwd samba | cut -d: -f4)"
-    samba_gid="$(getent group samba | cut -d: -f3)"
-    if [ "${current_uid}" != "${FORCE_USER_UID}" ] || [ "${current_gid}" != "${samba_gid}" ]; then
-      echo "User samba already exists with UID:GID ${current_uid}:${current_gid}, expected ${FORCE_USER_UID}:${samba_gid}" >&2
-      exit 1
-    fi
-    return
+ensure_samba_identity() {
+  if ! getent group samba >/dev/null; then
+    groupadd -g "${FORCE_GROUP_GID}" samba
   fi
-
-  existing_user="$(getent passwd "${FORCE_USER_UID}" | cut -d: -f1 || true)"
-  if [ -n "${existing_user}" ]; then
-    echo "Requested FORCE_USER_UID=${FORCE_USER_UID} already belongs to user ${existing_user}" >&2
-    exit 1
+  if ! getent passwd samba >/dev/null; then
+    useradd -u "${FORCE_USER_UID}" -g samba -M -s /sbin/nologin samba
   fi
-
-  useradd -u "${FORCE_USER_UID}" -g samba -M -s /sbin/nologin samba
 }
 
 write_healthcheck_auth() {
   install -d -m 0700 /run/samba
 
   if [ -n "${SAMBA_PASSWORD}" ]; then
-    (
-      umask 077
-      {
-        printf 'username = samba\n'
-        printf 'password = %s\n' "${SAMBA_PASSWORD}"
-        printf 'domain = %s\n' "${WORKGROUP}"
-      } > "${HEALTHCHECK_AUTH_FILE}"
-    )
+    HEALTHCHECK_AUTH_TMP="$(mktemp /run/samba/.healthcheck.auth.XXXXXX)"
+    chmod 0600 "${HEALTHCHECK_AUTH_TMP}"
+    {
+      printf 'username = samba\n'
+      printf 'password = %s\n' "${SAMBA_PASSWORD}"
+      printf 'domain = %s\n' "${WORKGROUP}"
+    } > "${HEALTHCHECK_AUTH_TMP}"
+    mv -f "${HEALTHCHECK_AUTH_TMP}" "${HEALTHCHECK_AUTH_FILE}"
+    HEALTHCHECK_AUTH_TMP=""
   else
     rm -f "${HEALTHCHECK_AUTH_FILE}"
   fi
 }
 
-# Create samba group and user with configurable UID/GID
-load_samba_password
-ensure_samba_group
-ensure_samba_user
+install_samba_config() {
+  chmod 0644 "${SMB_CONF_TMP}"
+  chown root:root "${SMB_CONF_TMP}"
+  mv -f "${SMB_CONF_TMP}" /etc/samba/smb.conf
+  SMB_CONF_TMP=""
+}
 
+# Normalize and validate every supported boolean before using it.
+SAMBA_BIND_INTERFACES_ONLY="$(normalize_boolean SAMBA_BIND_INTERFACES_ONLY "${SAMBA_BIND_INTERFACES_ONLY}")"
+READ_ONLY="$(normalize_boolean READ_ONLY "${READ_ONLY}")"
+RECYCLE_ENABLE="$(normalize_boolean RECYCLE_ENABLE "${RECYCLE_ENABLE}")"
+FOLLOW_SYMLINKS="$(normalize_boolean FOLLOW_SYMLINKS "${FOLLOW_SYMLINKS}")"
+GUEST_OK="$(normalize_boolean GUEST_OK "${GUEST_OK}")"
+MANAGE_SHARE_PERMISSIONS="$(normalize_boolean MANAGE_SHARE_PERMISSIONS "${MANAGE_SHARE_PERMISSIONS}")"
+WSDD2_ENABLE="$(normalize_boolean WSDD2_ENABLE "${WSDD2_ENABLE}")"
+WSDD2_LLMNR_ENABLE="$(normalize_boolean WSDD2_LLMNR_ENABLE "${WSDD2_LLMNR_ENABLE}")"
+AVAHI_ENABLE="$(normalize_boolean AVAHI_ENABLE "${AVAHI_ENABLE}")"
+
+# Validate all inputs before rendering configuration or changing system state.
+validate_share_name "${SHARE_NAME}"
+validate_share_path "${SHARE_PATH}"
+validate_workgroup "${WORKGROUP}"
+validate_single_line SERVER_STRING "${SERVER_STRING}"
+validate_canonical_id FORCE_USER_UID "${FORCE_USER_UID}"
+validate_canonical_id FORCE_GROUP_GID "${FORCE_GROUP_GID}"
+if [ -n "${SHARE_DIR_MODE}" ]; then
+  validate_octal_mode SHARE_DIR_MODE "${SHARE_DIR_MODE}"
+fi
+validate_unsigned_integer LOG_LEVEL "${LOG_LEVEL}"
+[ "${LOG_LEVEL}" -le 10 ] 2>/dev/null || fail "LOG_LEVEL must be between 0 and 10"
 validate_octal_mode CREATE_MASK "${CREATE_MASK}"
 validate_octal_mode DIRECTORY_MASK "${DIRECTORY_MASK}"
 validate_relative_path RECYCLE_REPOSITORY "${RECYCLE_REPOSITORY}"
@@ -181,8 +324,30 @@ fi
 validate_single_line RECYCLE_EXCLUDE "${RECYCLE_EXCLUDE}"
 validate_single_line RECYCLE_EXCLUDE_DIR "${RECYCLE_EXCLUDE_DIR}"
 validate_single_line SAMBA_INTERFACES "${SAMBA_INTERFACES}"
+validate_single_line SAMBA_HOSTS_ALLOW "${SAMBA_HOSTS_ALLOW}"
+validate_allowed_interfaces "${ALLOWED_INTERFACES}"
 validate_enum SMB_ENCRYPT "${SMB_ENCRYPT}" "default if_required desired required off"
 validate_enum SMB_SIGNING "${SMB_SIGNING}" "default auto mandatory disabled"
+load_samba_password
+
+if [ "${GUEST_OK}" = "1" ] && [ -n "${SAMBA_PASSWORD}" ]; then
+  fail "GUEST_OK cannot be enabled together with SAMBA_PASSWORD or SAMBA_PASSWORD_FILE"
+fi
+if [ "${GUEST_OK}" = "0" ] && [ -z "${SAMBA_PASSWORD}" ]; then
+  fail "Set SAMBA_PASSWORD or enable GUEST_OK"
+fi
+if [ "${SAMBA_BIND_INTERFACES_ONLY}" = "1" ]; then
+  [ -n "${SAMBA_INTERFACES}" ] || fail "SAMBA_BIND_INTERFACES_ONLY=1 requires SAMBA_INTERFACES"
+  interfaces_include_loopback \
+    || fail "SAMBA_INTERFACES must include lo, localhost, 127.x.x.x or ::1 when SAMBA_BIND_INTERFACES_ONLY=1"
+fi
+if [ "${MANAGE_SHARE_PERMISSIONS}" = "0" ]; then
+  [ -z "${SHARE_DIR_MODE}" ] \
+    || fail "SHARE_DIR_MODE requires MANAGE_SHARE_PERMISSIONS=1"
+  [ -d "${SHARE_PATH}" ] \
+    || fail "SHARE_PATH must already exist when MANAGE_SHARE_PERMISSIONS=0"
+fi
+validate_samba_identity
 
 # Optional: SMB transport protection
 if [ -n "${SMB_ENCRYPT}" ]; then
@@ -205,35 +370,9 @@ else
 fi
 
 if [ "${SAMBA_BIND_INTERFACES_ONLY}" = "1" ]; then
-  [ -n "${SAMBA_INTERFACES}" ] || fail "SAMBA_BIND_INTERFACES_ONLY=1 requires SAMBA_INTERFACES"
-  interfaces_include_loopback || fail "SAMBA_INTERFACES must include lo or 127.x.x.x when SAMBA_BIND_INTERFACES_ONLY=1"
   BIND_INTERFACES_ONLY_LINE="  bind interfaces only = yes"
 else
   BIND_INTERFACES_ONLY_LINE=""
-fi
-
-if [ "${GUEST_OK}" = "1" ]; then
-  if [ -n "${SAMBA_PASSWORD}" ]; then
-    printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
-  else
-    echo "GUEST_OK=1 and SAMBA_PASSWORD is unset; skipping SMB password setup"
-  fi
-else
-  if [ -z "${SAMBA_PASSWORD}" ]; then
-    echo "Set SAMBA_PASSWORD or enable GUEST_OK=1" >&2
-    exit 1
-  fi
-  printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
-fi
-
-write_healthcheck_auth
-
-# Ensure share directory exists with correct ownership
-mkdir -p "${SHARE_PATH}"
-chown samba:samba "${SHARE_PATH}"
-
-if [ -n "${SHARE_DIR_MODE}" ]; then
-  chmod "${SHARE_DIR_MODE}" "${SHARE_PATH}"
 fi
 
 # Optional: restrict access to specific networks
@@ -257,7 +396,10 @@ else
   READ_ONLY_VALUE="no"
 fi
 
-# Optional: recycle bin for SMB deletes
+# Optional: recycle bin for SMB deletes. Samba uses comma-separated lists;
+# translate the legacy pipe separator for backward compatibility.
+RECYCLE_EXCLUDE="$(printf '%s' "${RECYCLE_EXCLUDE}" | tr '|' ',')"
+RECYCLE_EXCLUDE_DIR="$(printf '%s' "${RECYCLE_EXCLUDE_DIR}" | tr '|' ',')"
 VFS_OBJECTS="fruit streams_xattr"
 if [ "${RECYCLE_ENABLE}" = "1" ]; then
   VFS_OBJECTS="recycle ${VFS_OBJECTS}"
@@ -290,19 +432,42 @@ else
   SYMLINKS_LINE=""
 fi
 
-# Generate smb.conf from template
+# Render and validate the complete configuration before creating identities or
+# changing the share. Keep the temporary file beside the destination so mv is
+# an atomic replacement on the same filesystem.
 export SHARE_NAME SHARE_PATH WORKGROUP SERVER_STRING LOG_LEVEL HOSTS_ALLOW_LINE INTERFACES_LINE BIND_INTERFACES_ONLY_LINE
 export SMB_ENCRYPT_LINE SMB_SIGNING_LINE
 export SYMLINKS_LINE GUEST_LINE
 export VFS_OBJECTS RECYCLE_LINES READ_ONLY_VALUE CREATE_MASK DIRECTORY_MASK
-envsubst < /etc/samba/smb.conf.template > /etc/samba/smb.conf
+SMB_CONF_TMP="$(mktemp /etc/samba/.smb.conf.XXXXXX)"
+envsubst < /etc/samba/smb.conf.template > "${SMB_CONF_TMP}"
+if ! testparm -s "${SMB_CONF_TMP}" >/dev/null 2>&1; then
+  testparm -s "${SMB_CONF_TMP}" >&2 || true
+  fail "Generated Samba configuration is invalid"
+fi
+
+# All validation has completed. System and volume mutations start here.
+ensure_samba_identity
+if [ -n "${SAMBA_PASSWORD}" ]; then
+  printf '%s\n%s\n' "${SAMBA_PASSWORD}" "${SAMBA_PASSWORD}" | smbpasswd -a -s samba
+fi
+
+if [ "${MANAGE_SHARE_PERMISSIONS}" = "1" ]; then
+  mkdir -p "${SHARE_PATH}"
+  chown samba:samba "${SHARE_PATH}"
+  if [ -n "${SHARE_DIR_MODE}" ]; then
+    chmod "${SHARE_DIR_MODE}" "${SHARE_PATH}"
+  fi
+fi
 
 # Optional: restrict Avahi to specific interfaces
 if [ -n "${ALLOWED_INTERFACES}" ]; then
   sed -i "s/^#*allow-interfaces=.*/allow-interfaces=${ALLOWED_INTERFACES}/" /etc/avahi/avahi-daemon.conf
 fi
 
-# Validate configuration
+write_healthcheck_auth
+install_samba_config
+
 echo "--- Samba configuration ---"
 testparm -s /etc/samba/smb.conf 2>/dev/null
 echo "---"

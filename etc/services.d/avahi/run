@@ -1,7 +1,8 @@
 #!/command/with-contenv sh
 # shellcheck shell=sh
 
-case "${AVAHI_ENABLE:-0}" in
+avahi_enable="$(printf '%s' "${AVAHI_ENABLE:-0}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+case "${avahi_enable}" in
   1|true|yes|on)
     ;;
   0|false|no|off|'')

@@ -3,10 +3,20 @@
 set -eu
 
 share="${SHARE_NAME:-public}"
-auth_file="${SAMBA_HEALTHCHECK_AUTH_FILE:-/run/samba/healthcheck.auth}"
+auth_file="/run/samba/healthcheck.auth"
 share_url="//127.0.0.1/${share}"
+guest_ok="$(printf '%s' "${GUEST_OK:-0}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
 
-if [ "${GUEST_OK:-}" = "1" ] && [ ! -s "${auth_file}" ]; then
+case "${guest_ok}" in
+  1 | true | yes | on) guest_ok=1 ;;
+  0 | false | no | off) guest_ok=0 ;;
+  *)
+    echo "GUEST_OK must be one of: 0, 1, false, true, no, yes, off, on" >&2
+    exit 1
+    ;;
+esac
+
+if [ "${guest_ok}" = "1" ]; then
   exec smbclient -N "${share_url}" -c quit >/dev/null 2>&1
 fi
 

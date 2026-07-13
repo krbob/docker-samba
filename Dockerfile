@@ -64,7 +64,7 @@ ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.title="docker-samba" \
-      org.opencontainers.image.description="Samba file server container with optional LAN discovery" \
+      org.opencontainers.image.description="Secure-by-default Samba SMB2/SMB3 file server with optional LAN discovery" \
       org.opencontainers.image.source="https://github.com/krbob/docker-samba" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}"

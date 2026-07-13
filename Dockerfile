@@ -31,14 +31,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM debian:13.5-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG IMAGE_VERSION=dev
-ARG VCS_REF=unknown
-
-LABEL org.opencontainers.image.title="docker-samba" \
-      org.opencontainers.image.description="Samba file server container with optional LAN discovery" \
-      org.opencontainers.image.source="https://github.com/krbob/docker-samba" \
-      org.opencontainers.image.version="${IMAGE_VERSION}" \
-      org.opencontainers.image.revision="${VCS_REF}"
 
 ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
 
@@ -67,6 +59,15 @@ COPY --chmod=0755 etc/samba-healthcheck /etc/samba-healthcheck
 COPY --chmod=0755 etc/services.d/avahi/run /etc/services.d/avahi/run
 COPY --chmod=0755 etc/services.d/smbd/run /etc/services.d/smbd/run
 COPY --chmod=0755 etc/services.d/wsdd/run /etc/services.d/wsdd/run
+
+ARG IMAGE_VERSION=dev
+ARG VCS_REF=unknown
+
+LABEL org.opencontainers.image.title="docker-samba" \
+      org.opencontainers.image.description="Samba file server container with optional LAN discovery" \
+      org.opencontainers.image.source="https://github.com/krbob/docker-samba" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
 EXPOSE 445/tcp
 

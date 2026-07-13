@@ -51,6 +51,8 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values remain accepted and are normalized at startup.
 - Removed obsolete socket and asynchronous-I/O tuning so current Samba defaults
   remain effective.
+- OCI revision labels are applied after reusable filesystem layers, so changing
+  commit metadata no longer invalidates the package-install cache.
 - CI now keeps smoke logic in `tests/smoke.sh`, pins third-party actions and
   tool images, validates an exact image candidate before promotion, verifies an
   exact arm64 child image with a minimal runtime smoke test, and performs

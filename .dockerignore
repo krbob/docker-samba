@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!smb.conf.template
+!etc/
+!etc/**
+
+# Keep local configuration and credentials out of the build context even if
+# broader allow-list rules are changed later.
+.env
+.secrets/
+samba_password.txt

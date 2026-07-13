@@ -1,15 +1,13 @@
 services:
   samba:
-    build: .
-    container_name: samba
+    image: ghcr.io/krbob/samba:${SAMBA_IMAGE_TAG:-latest}
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "${SAMBA_BIND_ADDRESS:-127.0.0.1}:445:445/tcp"
     environment:
       TZ: Europe/Warsaw
       SHARE_NAME: public
-      # Set SAMBA_PASSWORD, SAMBA_PASSWORD_FILE, or GUEST_OK.
-      # SAMBA_PASSWORD: "replace-with-a-strong-password"
-      # SAMBA_PASSWORD_FILE: /run/secrets/samba_password
+      SAMBA_PASSWORD_FILE: /run/secrets/samba_password
       WORKGROUP: WORKGROUP
       SERVER_STRING: Home Lab NAS
       FORCE_USER_UID: "1000"
@@ -21,8 +19,8 @@ services:
       # RECYCLE_ENABLE: "1"
       # RECYCLE_REPOSITORY: ".recycle"
       # RECYCLE_MAX_SIZE: "0"
-      # RECYCLE_EXCLUDE: "*.tmp|*.temp"
-      # RECYCLE_EXCLUDE_DIR: ".recycle|tmp"
+      # RECYCLE_EXCLUDE: "*.tmp,*.temp"
+      # RECYCLE_EXCLUDE_DIR: ".recycle,tmp"
       LOG_LEVEL: "1"
       # SMB_ENCRYPT: "desired"
       # SMB_SIGNING: "mandatory"
@@ -30,23 +28,30 @@ services:
       # SAMBA_INTERFACES: "lo eno1"
       # SAMBA_BIND_INTERFACES_ONLY: "1"
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 10.13.13.0/24 127.0.0.0/8"
-      # WSDD2_ENABLE: "1"
-      # WSDD2_HOSTNAME: "homelab"
-      # WSDD2_NETBIOS_NAME: "HOMELAB"
-      # AVAHI_ENABLE: "1"
-      # ALLOWED_INTERFACES: "eno1"
       # Security-sensitive: enables Samba wide links outside SHARE_PATH inside the container.
       # FOLLOW_SYMLINKS: "1"
       # GUEST_OK: "1"
     volumes:
       - samba-data:/share
-    # secrets:
-    #   - samba_password
+    secrets:
+      - samba_password
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   samba-data:
     driver: local
 
-# secrets:
-#   samba_password:
-#     file: ./samba_password.txt
+networks:
+  default:
+    driver: bridge
+
+secrets:
+  samba_password:
+    file: "${SAMBA_PASSWORD_SECRET_FILE:-./.secrets/samba_password}"

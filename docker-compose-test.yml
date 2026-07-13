@@ -2,9 +2,6 @@ services:
   samba:
     build: .
     image: local/samba:test
-    container_name: samba-test
-    ports:
-      - "445:445"
     environment:
       SAMBA_PASSWORD: "test-password"
       LOG_LEVEL: "2"

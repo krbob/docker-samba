@@ -1,12 +1,32 @@
 #!/command/with-contenv sh
 # shellcheck shell=sh
 
-if [ "${WSDD2_ENABLE}" != "1" ]; then
-  s6-svc -Od .
-  exit 0
-fi
+case "${WSDD2_ENABLE:-0}" in
+  1|true|yes|on)
+    ;;
+  0|false|no|off|'')
+    s6-svc -Od .
+    exit 0
+    ;;
+  *)
+    printf 'Invalid WSDD2_ENABLE value: %s\n' "${WSDD2_ENABLE}" >&2
+    exit 1
+    ;;
+esac
 
 set --
+
+case "${WSDD2_LLMNR_ENABLE:-0}" in
+  1|true|yes|on)
+    ;;
+  0|false|no|off|'')
+    set -- "$@" -w
+    ;;
+  *)
+    printf 'Invalid WSDD2_LLMNR_ENABLE value: %s\n' "${WSDD2_LLMNR_ENABLE}" >&2
+    exit 1
+    ;;
+esac
 
 if [ -n "${WSDD2_HOSTNAME}" ]; then
   set -- "$@" -H "${WSDD2_HOSTNAME}"
@@ -37,4 +57,4 @@ for arg do
 done
 printf '\n'
 
-exec wsdd2 "$@"
+exec s6-setuidgid wsdd2 wsdd2 "$@"

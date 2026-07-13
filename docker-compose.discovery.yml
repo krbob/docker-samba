@@ -1,0 +1,12 @@
+services:
+  samba:
+    network_mode: host
+    ports: !reset []
+    environment:
+      WSDD2_ENABLE: "1"
+      WSDD2_LLMNR_ENABLE: ${WSDD2_LLMNR_ENABLE:-0}
+      AVAHI_ENABLE: "1"
+      ALLOWED_INTERFACES: ${SAMBA_LAN_INTERFACE:?Set SAMBA_LAN_INTERFACE to the host LAN interface}
+      SAMBA_INTERFACES: lo ${SAMBA_LAN_INTERFACE:?Set SAMBA_LAN_INTERFACE to the host LAN interface}
+      SAMBA_BIND_INTERFACES_ONLY: "1"
+      SAMBA_HOSTS_ALLOW: ${SAMBA_LAN_NETWORK:?Set SAMBA_LAN_NETWORK to the trusted LAN CIDR} 127.0.0.0/8

@@ -1,9 +1,17 @@
 #!/command/with-contenv sh
 # shellcheck shell=sh
 
-if [ "${AVAHI_ENABLE}" != "1" ]; then
-  s6-svc -Od .
-  exit 0
-fi
+case "${AVAHI_ENABLE:-0}" in
+  1|true|yes|on)
+    ;;
+  0|false|no|off|'')
+    s6-svc -Od .
+    exit 0
+    ;;
+  *)
+    printf 'Invalid AVAHI_ENABLE value: %s\n' "${AVAHI_ENABLE}" >&2
+    exit 1
+    ;;
+esac
 
-exec avahi-daemon --no-drop-root --no-chroot
+exec avahi-daemon

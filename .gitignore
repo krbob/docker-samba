@@ -1,3 +1,5 @@
 .DS_Store
 .env
+.secrets/
+samba_password.txt
 *.log

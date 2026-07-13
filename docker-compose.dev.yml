@@ -1,0 +1,5 @@
+services:
+  samba:
+    build:
+      context: .
+    image: local/samba:dev

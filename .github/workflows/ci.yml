@@ -60,7 +60,6 @@ jobs:
 
       - name: Validate Compose files
         env:
-          SAMBA_PASSWORD: compose-validation-password
           SAMBA_LAN_INTERFACE: eth0
           SAMBA_LAN_NETWORK: 192.0.2.0/24
         run: |
@@ -69,6 +68,10 @@ jobs:
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.dev.yml \
+            config --quiet
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.guest.yml \
             config --quiet
           docker compose \
             -f docker-compose.yml \

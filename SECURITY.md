@@ -2,10 +2,14 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published image and the latest
-release tag. Older commit-tagged images are not maintained or republished with
-newer operating-system packages; pin a recorded digest when immutable artifact
-identity is required.
+Security fixes are delivered through the current `latest` image. The project
+does not currently publish versioned releases. Commit-tagged images and
+recorded digests are immutable snapshots: they are not maintained or
+republished with newer operating-system packages.
+
+Pin a digest when immutable artifact identity is required, but monitor the
+current image and changelog for security updates that require an explicit
+upgrade.
 
 ## Reporting a vulnerability
 

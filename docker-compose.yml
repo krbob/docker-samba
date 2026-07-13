@@ -12,7 +12,7 @@ services:
       SERVER_STRING: Home Lab NAS
       FORCE_USER_UID: "1000"
       FORCE_GROUP_GID: "1000"
-      # SHARE_DIR_MODE: "0777"
+      # SHARE_DIR_MODE: "0770"
       # READ_ONLY: "1"
       # CREATE_MASK: "0664"
       # DIRECTORY_MASK: "0775"
@@ -30,7 +30,8 @@ services:
       # SAMBA_HOSTS_ALLOW: "192.168.1.0/24 10.13.13.0/24 127.0.0.0/8"
       # Security-sensitive: enables Samba wide links outside SHARE_PATH inside the container.
       # FOLLOW_SYMLINKS: "1"
-      # GUEST_OK: "1"
+      # Guest mode requires an override that also removes the password secret.
+      # See docs/configuration.md.
     volumes:
       - samba-data:/share
     secrets:

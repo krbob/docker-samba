@@ -12,7 +12,7 @@ The complete local workflow requires:
 
 - Git;
 - Docker Engine with BuildKit/buildx;
-- Docker Compose v2 or newer;
+- Docker Compose 2.18.0 or newer;
 - Bash and standard POSIX command-line tools;
 - ShellCheck, Hadolint, and actionlint for the same static checks used by CI.
 
@@ -26,8 +26,12 @@ archives. To run the development Compose stack, create a local secret first:
 ```sh
 cp .env.example .env
 mkdir -p .secrets
-umask 077
-printf '%s\n' 'replace-with-a-local-test-password' > .secrets/samba_password
+chmod 700 .secrets
+(
+  umask 077
+  printf '%s\n' 'replace-with-a-local-test-password' > .secrets/samba_password
+)
+chmod 600 .secrets/samba_password
 ```
 
 ## Static checks
@@ -64,6 +68,10 @@ docker compose \
   -f docker-compose.yml \
   -f docker-compose.dev.yml \
   config --quiet
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.guest.yml \
+  config --quiet
 SAMBA_LAN_INTERFACE=eth0 SAMBA_LAN_NETWORK=192.0.2.0/24 \
   docker compose \
     -f docker-compose.yml \
@@ -90,6 +98,18 @@ Then run the complete smoke suite:
 ```sh
 bash tests/smoke.sh
 ```
+
+The full suite runs on amd64 in CI. The published arm64 child image receives
+the baseline network, authentication, and runtime checks with
+`SAMBA_SMOKE_SCOPE=minimal` under QEMU.
+
+Advanced smoke controls are intended for CI and focused local diagnosis:
+
+| Variable | Default | Contract |
+|---|---|---|
+| `SAMBA_TEST_IMAGE` | `local/samba:test` | Existing image to test; the suite retags it as `local/samba:test` |
+| `SAMBA_TEST_COMPOSE_FILE` | `docker-compose-test.yml` | Must define service `samba`, share `public`, password `test-password`, and a reachable Compose network |
+| `SAMBA_SMOKE_SCOPE` | `full` | `minimal` stops after baseline network and authentication checks |
 
 The suite creates temporary containers, volumes, and directories and removes
 them on exit. Do not run it against a Docker context containing production
@@ -120,4 +140,4 @@ Avahi, WSDD2, interface filtering, host networking, or capabilities.
 - Preserve compatibility where it does not weaken validation or security;
   document unavoidable breaking changes explicitly.
 - Do not add a license or change licensing terms without an explicit maintainer
-  decision.
+  decision. The repository currently has no declared project license.

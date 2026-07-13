@@ -1,0 +1,7 @@
+services:
+  samba:
+    environment:
+      SAMBA_PASSWORD_FILE: !reset null
+      GUEST_OK: "true"
+      READ_ONLY: "true"
+    secrets: !reset []

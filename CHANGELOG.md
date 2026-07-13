@@ -3,6 +3,11 @@
 All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+The project currently publishes validated `main` commits continuously as
+`latest` and `sha-<full-git-commit>` images, without versioned releases. Until
+the first release is cut, `[Unreleased]` is the cumulative changelog for that
+continuously published line; use a `sha-*` image or digest for an exact build.
+
 ## [Unreleased]
 
 ### Breaking
@@ -31,7 +36,8 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Added separate Compose overrides for local builds and trusted-LAN discovery.
+- Added separate Compose overrides for local builds, read-only guest access,
+  and trusted-LAN discovery.
 - Added `MANAGE_SHARE_PERMISSIONS` for prepared and read-only mounts.
 - Added OCI image metadata for source, version, and revision.
 - Added reusable runtime smoke tests covering authenticated and guest access,
@@ -51,14 +57,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values remain accepted and are normalized at startup.
 - Removed obsolete socket and asynchronous-I/O tuning so current Samba defaults
   remain effective.
-- OCI revision labels are applied after reusable filesystem layers, so changing
-  commit metadata no longer invalidates the package-install cache.
-- CI now keeps smoke logic in `tests/smoke.sh`, pins third-party actions and
-  tool images, validates an exact image candidate before promotion, verifies an
-  exact arm64 child image with a minimal runtime smoke test, and performs
-  scheduled vulnerability scans.
-- The test Compose project no longer publishes port 445 or relies on a fixed
-  container name.
+- CI validates the exact multi-architecture candidate before promotion, runs a
+  minimal arm64 runtime test, and performs scheduled vulnerability scans.
+- Operator documentation is split into focused configuration, networking,
+  operations, and data-recovery guides. Guest-mode and restore examples now
+  remove inherited settings explicitly and preserve the current data volume.
 
 ### Fixed
 

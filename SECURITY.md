@@ -3,8 +3,9 @@
 ## Supported versions
 
 Security fixes are provided for the latest published image and the latest
-release tag. Images identified only by an older commit tag are immutable and
-are not rebuilt with newer operating-system packages.
+release tag. Older commit-tagged images are not maintained or republished with
+newer operating-system packages; pin a recorded digest when immutable artifact
+identity is required.
 
 ## Reporting a vulnerability
 

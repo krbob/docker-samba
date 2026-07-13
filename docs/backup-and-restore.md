@@ -16,6 +16,9 @@ A complete backup should preserve:
 
 Do not put the password secret inside the share archive.
 
+The commands below assume the default `SHARE_PATH=/share`. If the deployment
+uses another target, replace `/share` in both the backup and restore commands.
+
 ## Named-volume backup
 
 Stop writes before taking a filesystem-level archive:

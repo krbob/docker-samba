@@ -5,578 +5,319 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  ACTIONLINT_IMAGE: rhysd/actionlint:1.7.10@sha256:ef8299f97635c4c30e2298f48f30763ab782a4ad2c95b744649439a039421e36
+  HADOLINT_IMAGE: hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e
+  SHELLCHECK_IMAGE: koalaman/shellcheck:stable@sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d
+  TRIVY_IMAGE: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 
 jobs:
-  test:
+  quality:
+    name: Static checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Lint GitHub Actions workflows
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo:ro" \
+            -w /repo \
+            "$ACTIONLINT_IMAGE"
 
       - name: Lint shell scripts
         run: |
-          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable \
-            etc/cont-init.d/01-samba-init \
-            etc/samba-healthcheck \
-            etc/services.d/smbd/run \
-            etc/services.d/wsdd/run \
-            etc/services.d/avahi/run
+          docker run --rm \
+            -v "$PWD:/mnt:ro" \
+            -w /mnt \
+            "$SHELLCHECK_IMAGE" \
+              etc/cont-init.d/01-samba-init \
+              etc/samba-healthcheck \
+              etc/services.d/smbd/run \
+              etc/services.d/wsdd/run \
+              etc/services.d/avahi/run \
+              tests/smoke.sh
 
       - name: Lint Dockerfile
-        run: docker run --rm -i hadolint/hadolint:v2.12.0 /bin/hadolint --ignore DL3008 - < Dockerfile
+        run: |
+          docker run --rm -i "$HADOLINT_IMAGE" \
+            /bin/hadolint --ignore DL3008 - < Dockerfile
 
-      - name: Build test image
-        uses: docker/build-push-action@v7
+      - name: Validate Compose files
+        env:
+          SAMBA_PASSWORD: compose-validation-password
+          SAMBA_LAN_INTERFACE: eth0
+          SAMBA_LAN_NETWORK: 192.0.2.0/24
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose-test.yml config --quiet
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.dev.yml \
+            config --quiet
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.discovery.yml \
+            config --quiet
+
+  test-local:
+    name: Build and test without publishing
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Build amd64 test image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
+          platforms: linux/amd64
           load: true
           tags: local/samba:test
-          cache-from: type=gha,scope=samba-image
-          cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
+          build-args: |
+            IMAGE_VERSION=${{ github.sha }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=samba-image-amd64
+          cache-to: type=gha,mode=max,scope=samba-image-amd64,ignore-error=true
 
-      - name: Scan image with Trivy
+      - name: Run Samba smoke tests
+        run: bash tests/smoke.sh
+
+      - name: Export image for socketless vulnerability scanning
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker image save --output "$RUNNER_TEMP/samba-image.tar" local/samba:test
+
+      - name: Gate on fixable HIGH and CRITICAL vulnerabilities
         run: |
           docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:0.72.0 image \
+            -v "$RUNNER_TEMP/samba-image.tar:/image.tar:ro" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image \
+              --input /image.tar \
               --exit-code 1 \
-              --severity CRITICAL \
+              --severity HIGH,CRITICAL \
               --ignore-unfixed \
               --scanners vuln \
               --pkg-types os \
-              --no-progress \
-              local/samba:test
+              --no-progress
 
-      - name: Build arm64 image
-        uses: docker/build-push-action@v7
+      - name: Report all HIGH and CRITICAL vulnerabilities
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/samba-image.tar:/image.tar:ro" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image \
+              --input /image.tar \
+              --exit-code 0 \
+              --severity HIGH,CRITICAL \
+              --scanners vuln \
+              --pkg-types os \
+              --no-progress
+
+      - name: Build arm64 runtime image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: linux/arm64
-          push: false
-          cache-from: type=gha,scope=samba-image
-          cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
+          load: true
+          tags: local/samba:arm64-test
+          build-args: |
+            IMAGE_VERSION=${{ github.sha }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=samba-image-arm64
+          cache-to: type=gha,mode=max,scope=samba-image-arm64,ignore-error=true
 
-      - name: Start test container
-        run: docker compose -f docker-compose-test.yml up -d --no-build
-
-      - name: Wait for container to be healthy
-        run: |
-          echo "Waiting for Samba to start..."
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-test)
-            if [ "$HEALTH" = "healthy" ]; then
-              echo "Samba is ready"
-              exit 0
-            fi
-            if [ "$HEALTH" = "unhealthy" ]; then
-              echo "Samba became unhealthy"
-              docker logs samba-test
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "Samba failed to start"
-          docker logs samba-test
-          exit 1
-
-      - name: Smoke test - healthcheck credentials are not in argv
-        run: |
-          HEALTHCHECK=$(docker inspect -f '{{json .Config.Healthcheck.Test}}' samba-test)
-          echo "$HEALTHCHECK"
-          echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD' \
-            && { echo "Healthcheck must not expose the Samba password in argv"; exit 1; }
-          docker exec samba-test test -f /run/samba/healthcheck.auth
-          MODE=$(docker exec samba-test stat -c '%a' /run/samba/healthcheck.auth)
-          [ "$MODE" = "600" ] || { echo "Expected healthcheck credentials mode 600, got $MODE"; exit 1; }
-
-      - name: Smoke test - list shares
-        run: |
-          OUTPUT=$(docker exec samba-test smbclient -N -L //127.0.0.1 2>&1)
-          echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "public" || { echo "Share 'public' not found"; exit 1; }
-
-      - name: Smoke test - write and read file
-        run: |
-          docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'put /etc/hostname test-file.txt' 2>&1
-          OUTPUT=$(docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'ls' 2>&1)
-          echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "test-file.txt" || { echo "File not found"; exit 1; }
-
-      - name: Smoke test - verify file content
-        run: |
-          docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'get test-file.txt /tmp/downloaded.txt' 2>&1
-          docker exec samba-test cat /tmp/downloaded.txt
-          echo "File read/write OK"
-
-      - name: Smoke test - veto files
-        run: |
-          PUT_OUTPUT=$(docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'put /etc/hostname .DS_Store' 2>&1 || true)
-          echo "$PUT_OUTPUT"
-          echo "$PUT_OUTPUT" | grep -q "NT_STATUS_OBJECT_NAME_NOT_FOUND" \
-            || { echo "Expected vetoed file upload to be rejected"; exit 1; }
-          OUTPUT=$(docker exec samba-test smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'ls' 2>&1)
-          echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "\.DS_Store" && { echo "Veto file should not be visible"; exit 1; }
-          echo "Veto files OK"
-
-      - name: Smoke test - guest access denied
-        run: |
-          if docker exec samba-test smbclient -N //127.0.0.1/public -c 'ls' >/tmp/guest-output.txt 2>&1; then
-            echo "Guest access should be denied"
-            cat /tmp/guest-output.txt
-            exit 1
-          fi
-          cat /tmp/guest-output.txt
-          grep -Eqi "NT_STATUS_ACCESS_DENIED|Access denied|tree connect failed" /tmp/guest-output.txt \
-            || { echo "Expected guest access denial message"; exit 1; }
-
-      - name: Smoke test - hosts allow
-        run: |
-          cleanup() {
-            docker rm -f samba-hosts-allow >/dev/null 2>&1 || true
-            docker volume rm samba-hosts-allow-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-hosts-allow \
-            -e SAMBA_PASSWORD=test-password \
-            -e SAMBA_HOSTS_ALLOW="127.0.0.0/8" \
-            -v samba-hosts-allow-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-hosts-allow)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-hosts-allow; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-hosts-allow; exit 1; }
-
-          CONFIG=$(docker exec samba-hosts-allow testparm -s /etc/samba/smb.conf 2>/dev/null)
-          echo "$CONFIG" | grep -Fq "hosts allow = 127.0.0.0/8" \
-            || { echo "Expected hosts allow in smb.conf"; docker logs samba-hosts-allow; exit 1; }
-          docker exec samba-hosts-allow smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
-
-      - name: Smoke test - SMB transport protection
-        run: |
-          cleanup() {
-            docker rm -f samba-smb-protection >/dev/null 2>&1 || true
-            docker volume rm samba-smb-protection-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-smb-protection \
-            -e SAMBA_PASSWORD=test-password \
-            -e SMB_ENCRYPT=desired \
-            -e SMB_SIGNING=mandatory \
-            -v samba-smb-protection-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-smb-protection)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-smb-protection; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-smb-protection; exit 1; }
-
-          docker exec samba-smb-protection grep -Fq "server smb encrypt = desired" /etc/samba/smb.conf \
-            || { echo "Expected server smb encrypt in smb.conf"; docker logs samba-smb-protection; exit 1; }
-          docker exec samba-smb-protection grep -Fq "server signing = mandatory" /etc/samba/smb.conf \
-            || { echo "Expected server signing in smb.conf"; docker logs samba-smb-protection; exit 1; }
-          docker exec samba-smb-protection smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
-
-      - name: Smoke test - optional services disabled by default
-        run: |
-          docker exec samba-test /command/s6-svstat /var/run/s6/legacy-services/wsdd 2>&1 | grep -q "^down" \
-            && echo "wsdd: down (correct)" || { echo "wsdd should be down by default"; docker logs samba-test; exit 1; }
-          docker exec samba-test /command/s6-svstat /var/run/s6/legacy-services/avahi 2>&1 | grep -q "^down" \
-            && echo "avahi: down (correct)" || { echo "avahi should be down by default"; docker logs samba-test; exit 1; }
-
-      - name: Smoke test - optional services start with wsdd2 config
-        run: |
-          docker compose -f docker-compose-test.yml down -v
-          docker run -d --name samba-discovery \
-            --cap-add CAP_NET_ADMIN \
-            --cap-add CAP_NET_RAW \
-            -e SAMBA_PASSWORD=test-password \
-            -e WORKGROUP=TESTWG \
-            -e WSDD2_ENABLE=1 \
-            -e WSDD2_HOSTNAME=testhost \
-            -e WSDD2_NETBIOS_NAME=TESTHOST \
-            -e WSDD2_WORKGROUP=TESTWG \
-            -e AVAHI_ENABLE=1 \
-            -v samba-discovery-data:/share \
-            local/samba:test
-          sleep 5
-          docker exec samba-discovery /command/s6-svstat /var/run/s6/legacy-services/wsdd 2>&1 | grep -q "^up" \
-            && echo "wsdd: up (correct)" || { echo "wsdd not running"; docker logs samba-discovery; exit 1; }
-          docker exec samba-discovery /command/s6-svstat /var/run/s6/legacy-services/avahi 2>&1 | grep -q "^up" \
-            && echo "avahi: up (correct)" || { echo "avahi not running"; docker logs samba-discovery; exit 1; }
-          DISCOVERY_LOGS=$(docker logs samba-discovery 2>&1)
-          case "$DISCOVERY_LOGS" in
-            *"Starting wsdd2 -H testhost -N TESTHOST -G TESTWG"*) ;;
-            *) echo "wsdd2 did not start with expected arguments"; echo "$DISCOVERY_LOGS"; exit 1 ;;
-          esac
-          docker rm -f samba-discovery
-          docker volume rm samba-discovery-data
-
-      - name: Smoke test - guest access allowed with GUEST_OK
-        run: |
-          docker run -d --name samba-guest \
-            -e GUEST_OK=1 \
-            -v samba-guest-data:/share \
-            local/samba:test
-          sleep 3
-          docker exec samba-guest smbclient -N //127.0.0.1/public -c 'ls' 2>&1 \
-            || { echo "Guest access should be allowed"; docker logs samba-guest; exit 1; }
-          docker exec samba-guest smbclient -N //127.0.0.1/public \
-            -c 'put /etc/hostname guest-test.txt' 2>&1 \
-            || { echo "Guest should be able to write"; docker logs samba-guest; exit 1; }
-          echo "Guest access OK"
-          docker rm -f samba-guest
-          docker volume rm samba-guest-data
-
-      - name: Smoke test - password file
-        run: |
-          cleanup() {
-            docker rm -f samba-password-file >/dev/null 2>&1 || true
-            docker volume rm samba-password-file-data >/dev/null 2>&1 || true
-            rm -rf /tmp/samba-password-file-test
-          }
-          trap cleanup EXIT
-
-          mkdir -p /tmp/samba-password-file-test
-          printf '%s\n' 'file-password' > /tmp/samba-password-file-test/password
-
-          docker run -d --name samba-password-file \
-            -e SAMBA_PASSWORD_FILE=/run/secrets/samba_password \
-            -v /tmp/samba-password-file-test/password:/run/secrets/samba_password:ro \
-            -v samba-password-file-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-password-file)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-password-file; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-password-file; exit 1; }
-
-          set +e
-          SMBCLIENT_OUTPUT=$(docker exec samba-password-file smbclient -U samba%file-password //127.0.0.1/public \
-            -c 'put /etc/hostname password-file.txt' 2>&1)
-          SMBCLIENT_STATUS=$?
-          set -e
-          echo "$SMBCLIENT_OUTPUT"
-          docker exec samba-password-file cmp -s /etc/hostname /share/password-file.txt \
-            || { echo "Password-file upload did not create the expected file"; docker logs samba-password-file; docker exec samba-password-file ls -la /run/samba /share; exit 1; }
-          if [ "$SMBCLIENT_STATUS" -ne 0 ]; then
-            echo "smbclient exited with status $SMBCLIENT_STATUS after creating the expected file"
-          fi
-          docker exec samba-password-file test -s /run/samba/healthcheck.auth \
-            || { echo "Expected healthcheck auth file"; docker logs samba-password-file; docker exec samba-password-file ls -la /run/samba /share; exit 1; }
-          HEALTHCHECK=$(docker inspect -f '{{json .Config.Healthcheck.Test}}' samba-password-file)
-          if echo "$HEALTHCHECK" | grep -Eq -- '--password|SAMBA_PASSWORD'; then
-            echo "Healthcheck must not expose the Samba password in argv"
-            exit 1
-          fi
-
-      - name: Smoke test - bind interfaces
-        run: |
-          cleanup() {
-            docker rm -f samba-bind-interfaces >/dev/null 2>&1 || true
-            docker volume rm samba-bind-interfaces-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-bind-interfaces \
-            -e SAMBA_PASSWORD=test-password \
-            -e SAMBA_INTERFACES=lo \
-            -e SAMBA_BIND_INTERFACES_ONLY=1 \
-            -v samba-bind-interfaces-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-bind-interfaces)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-bind-interfaces; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-bind-interfaces; exit 1; }
-
-          CONFIG=$(docker exec samba-bind-interfaces testparm -s /etc/samba/smb.conf 2>/dev/null)
-          echo "$CONFIG" | grep -Fq "interfaces = lo" \
-            || { echo "Expected interfaces in smb.conf"; docker logs samba-bind-interfaces; exit 1; }
-          echo "$CONFIG" | grep -Fq "bind interfaces only = Yes" \
-            || { echo "Expected bind interfaces only in smb.conf"; docker logs samba-bind-interfaces; exit 1; }
-
-      - name: Smoke test - follow symlinks
-        run: |
-          cleanup() {
-            docker rm -f samba-symlinks >/dev/null 2>&1 || true
-            docker volume rm samba-symlinks-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-symlinks \
-            -e SAMBA_PASSWORD=test-password \
-            -e FOLLOW_SYMLINKS=1 \
-            -v samba-symlinks-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-symlinks)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-symlinks; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-symlinks; exit 1; }
-
-          CONFIG=$(docker exec samba-symlinks testparm -s /etc/samba/smb.conf 2>/dev/null)
-          echo "$CONFIG" | grep -Fq "wide links = Yes" \
-            || { echo "Expected wide links in smb.conf"; docker logs samba-symlinks; exit 1; }
-          echo "$CONFIG" | grep -Fq "smb1 unix extensions = No" \
-            || { echo "Expected unix extensions disabled in smb.conf"; docker logs samba-symlinks; exit 1; }
-          docker exec samba-symlinks grep -Fq "follow symlinks = yes" /etc/samba/smb.conf \
-            || { echo "Expected follow symlinks in smb.conf"; docker logs samba-symlinks; exit 1; }
-
-          docker exec samba-symlinks sh -c 'printf "%s\n" linked-target > /tmp/outside-share.txt && ln -s /tmp/outside-share.txt /share/outside-link.txt'
-          docker exec samba-symlinks smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'get outside-link.txt /tmp/symlink-download.txt' 2>&1
-          docker exec samba-symlinks grep -q "linked-target" /tmp/symlink-download.txt
-
-      - name: Smoke test - multiline password fails fast
-        run: |
-          cleanup() {
-            docker rm -f samba-multiline-password >/dev/null 2>&1 || true
-            docker volume rm samba-multiline-password-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          MULTILINE_PASSWORD=$(printf 'bad\npassword')
-          docker run -d --name samba-multiline-password \
-            -e SAMBA_PASSWORD="${MULTILINE_PASSWORD}" \
-            -v samba-multiline-password-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 10); do
-            STATUS=$(docker inspect -f '{{.State.Status}}' samba-multiline-password)
-            [ "$STATUS" = "exited" ] && break
-            sleep 1
-          done
-          [ "$STATUS" = "exited" ] || { echo "Container should exit on multiline SAMBA_PASSWORD"; docker logs samba-multiline-password; exit 1; }
-          docker logs samba-multiline-password 2>&1 | grep -q "SAMBA_PASSWORD must not contain newlines" \
-            || { echo "Expected multiline password startup error"; docker logs samba-multiline-password; exit 1; }
-
-      - name: Smoke test - invalid SMB transport protection fails fast
-        run: |
-          cleanup() {
-            docker rm -f samba-invalid-smb-protection >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-invalid-smb-protection \
-            -e SAMBA_PASSWORD=test-password \
-            -e SMB_ENCRYPT=enabled \
-            local/samba:test
-
-          for i in $(seq 1 10); do
-            STATUS=$(docker inspect -f '{{.State.Status}}' samba-invalid-smb-protection)
-            [ "$STATUS" = "exited" ] && break
-            sleep 1
-          done
-          [ "$STATUS" = "exited" ] || { echo "Container should exit on invalid SMB_ENCRYPT"; docker logs samba-invalid-smb-protection; exit 1; }
-          docker logs samba-invalid-smb-protection 2>&1 | grep -q "SMB_ENCRYPT must be one of" \
-            || { echo "Expected invalid SMB_ENCRYPT startup error"; docker logs samba-invalid-smb-protection; exit 1; }
-
-      - name: Smoke test - read-only share blocks writes
-        run: |
-          cleanup() {
-            docker rm -f samba-readonly >/dev/null 2>&1 || true
-            docker volume rm samba-readonly-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-readonly \
-            -e SAMBA_PASSWORD=test-password \
-            -e READ_ONLY=1 \
-            -v samba-readonly-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-readonly)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-readonly; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-readonly; exit 1; }
-
-          docker exec samba-readonly smbclient -U samba%test-password //127.0.0.1/public -c 'ls' 2>&1
-          if docker exec samba-readonly smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'put /etc/hostname readonly.txt' >/tmp/readonly-output.txt 2>&1; then
-            echo "Read-only share should reject writes"
-            cat /tmp/readonly-output.txt
-            exit 1
-          fi
-          cat /tmp/readonly-output.txt
-          grep -Eqi "NT_STATUS_ACCESS_DENIED|Access denied|NT_STATUS_MEDIA_WRITE_PROTECTED" /tmp/readonly-output.txt \
-            || { echo "Expected write denial message"; exit 1; }
-
-      - name: Smoke test - recycle bin and create masks
-        run: |
-          cleanup() {
-            docker rm -f samba-options >/dev/null 2>&1 || true
-            docker volume rm samba-options-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run -d --name samba-options \
-            -e SAMBA_PASSWORD=test-password \
-            -e RECYCLE_ENABLE=1 \
-            -e RECYCLE_MAX_SIZE=1024 \
-            -e RECYCLE_EXCLUDE='*.tmp|*.temp' \
-            -e RECYCLE_EXCLUDE_DIR='.recycle|tmp' \
-            -e CREATE_MASK=0640 \
-            -e DIRECTORY_MASK=0750 \
-            -v samba-options-data:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-options)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-options; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-options; exit 1; }
-
-          docker exec samba-options smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'mkdir maskdir; put /etc/hostname maskdir/mask-file.txt' 2>&1
-
-          DIR_MODE=$(docker exec samba-options stat -c '%a' /share/maskdir)
-          FILE_MODE=$(docker exec samba-options stat -c '%a' /share/maskdir/mask-file.txt)
-          [ "$DIR_MODE" = "750" ] || { echo "Expected directory mode 750, got $DIR_MODE"; exit 1; }
-          [ "$FILE_MODE" = "640" ] || { echo "Expected file mode 640, got $FILE_MODE"; exit 1; }
-          docker exec samba-options grep -Fq "recycle:maxsize = 1024" /etc/samba/smb.conf \
-            || { echo "Expected recycle:maxsize in smb.conf"; docker logs samba-options; exit 1; }
-          docker exec samba-options grep -Fq "recycle:exclude = *.tmp|*.temp" /etc/samba/smb.conf \
-            || { echo "Expected recycle:exclude in smb.conf"; docker logs samba-options; exit 1; }
-          docker exec samba-options grep -Fq "recycle:exclude_dir = .recycle|tmp" /etc/samba/smb.conf \
-            || { echo "Expected recycle:exclude_dir in smb.conf"; docker logs samba-options; exit 1; }
-
-          docker exec samba-options smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'del maskdir/mask-file.txt' 2>&1
-          docker exec samba-options test -f /share/.recycle/maskdir/mask-file.txt
-
-      - name: Smoke test - bind mount UID/GID
-        run: |
-          cleanup() {
-            docker rm -f samba-bind-uid >/dev/null 2>&1 || true
-            rm -rf /tmp/samba-bind-uid-test 2>/dev/null || sudo rm -rf /tmp/samba-bind-uid-test
-          }
-          trap cleanup EXIT
-
-          mkdir -p /tmp/samba-bind-uid-test
-          docker run -d --name samba-bind-uid \
-            -e SAMBA_PASSWORD=test-password \
-            -e FORCE_USER_UID=1234 \
-            -e FORCE_GROUP_GID=1234 \
-            -v /tmp/samba-bind-uid-test:/share \
-            local/samba:test
-
-          for i in $(seq 1 30); do
-            HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' samba-bind-uid)
-            [ "$HEALTH" = "healthy" ] && break
-            [ "$HEALTH" = "unhealthy" ] && { docker logs samba-bind-uid; exit 1; }
-            sleep 1
-          done
-          [ "$HEALTH" = "healthy" ] || { docker logs samba-bind-uid; exit 1; }
-
-          docker exec samba-bind-uid smbclient -U samba%test-password //127.0.0.1/public \
-            -c 'put /etc/hostname uid-test.txt' 2>&1
-          SAMBA_UID=$(docker exec samba-bind-uid id -u samba)
-          SAMBA_GID=$(docker exec samba-bind-uid id -g samba)
-          [ "$SAMBA_UID:$SAMBA_GID" = "1234:1234" ] \
-            || { echo "Expected samba UID:GID 1234:1234, got $SAMBA_UID:$SAMBA_GID"; docker logs samba-bind-uid; exit 1; }
-          docker exec samba-bind-uid test -f /share/uid-test.txt
-
-      - name: Smoke test - invalid UID/GID fails fast
-        run: |
-          docker run -d --name samba-invalid \
-            -e FORCE_USER_UID=0 \
-            -e FORCE_GROUP_GID=0 \
-            local/samba:test
-          for i in $(seq 1 10); do
-            STATUS=$(docker inspect -f '{{.State.Status}}' samba-invalid)
-            [ "$STATUS" = "exited" ] && break
-            sleep 1
-          done
-          echo "container status: $STATUS"
-          [ "$STATUS" = "exited" ] || { echo "Container should exit on invalid UID/GID"; docker logs samba-invalid; exit 1; }
-          docker logs samba-invalid 2>&1 | grep -Eq "FORCE_USER_UID|FORCE_GROUP_GID|Group samba already exists|User samba already exists" \
-            || { echo "Expected a clear startup error"; docker logs samba-invalid; exit 1; }
-          docker rm -f samba-invalid >/dev/null 2>&1 || true
-
-      - name: Cleanup
-        if: always()
-        run: docker compose -f docker-compose-test.yml down -v
+      # This is intentionally last: smoke.sh retags the selected image as
+      # local/samba:test for the fixed Compose test fixture.
+      - name: Run minimal arm64 smoke tests through QEMU
+        env:
+          SAMBA_SMOKE_SCOPE: minimal
+          SAMBA_TEST_IMAGE: local/samba:arm64-test
+        run: bash tests/smoke.sh
 
   publish:
-    needs: test
+    name: Build once, test digest, and promote
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set image references
+        id: image
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/samba"
+          candidate="${image}:candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          full_sha="${image}:sha-${GITHUB_SHA}"
+          {
+            echo "image=${image}"
+            echo "candidate=${candidate}"
+            echo "full_sha=${full_sha}"
+            echo "latest=${image}:latest"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image tags
-        id: image
-        run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/samba"
-          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
-          SHA_TAG="sha-$(git rev-parse --short HEAD)"
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
-
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      - name: Build and push multi-arch image
-        uses: docker/build-push-action@v7
+      # A registry-backed candidate is intentional. The classic Docker image store
+      # cannot load a multi-platform index with attestations. Keeping this immutable
+      # candidate tag also leaves an audit trail for a build that failed validation.
+      - name: Build and push multiarch candidate once
+        id: candidate
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           sbom: true
           provenance: mode=max
-          cache-from: type=gha,scope=samba-image
-          cache-to: type=gha,mode=max,scope=samba-image,ignore-error=true
-          tags: |
-            ${{ steps.image.outputs.image }}:${{ steps.image.outputs.sha_tag }}
-            ${{ steps.image.outputs.image }}:latest
+          tags: ${{ steps.image.outputs.candidate }}
+          build-args: |
+            IMAGE_VERSION=${{ github.sha }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=samba-image-multiarch
+          cache-to: type=gha,mode=max,scope=samba-image-multiarch,ignore-error=true
+
+      - name: Resolve and pull the exact amd64 candidate artifact
+        id: platforms
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          test -n "$DIGEST"
+          candidate_ref="${IMAGE}@${DIGEST}"
+          manifest="$(docker buildx imagetools inspect "$candidate_ref" --format '{{json .Manifest}}')"
+          echo "$manifest" | jq .
+          echo "$manifest" | jq -e \
+            '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")' >/dev/null
+          echo "$manifest" | jq -e \
+            '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64")' >/dev/null
+          amd64_digest="$(echo "$manifest" | jq -er \
+            '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')"
+          arm64_digest="$(echo "$manifest" | jq -er \
+            '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64") | .digest')"
+          {
+            echo "amd64_digest=${amd64_digest}"
+            echo "arm64_digest=${arm64_digest}"
+          } >> "$GITHUB_OUTPUT"
+          docker pull "${IMAGE}@${amd64_digest}"
+          docker tag "${IMAGE}@${amd64_digest}" local/samba:test
+          test "$(docker image inspect -f '{{.Architecture}}' local/samba:test)" = "amd64"
+
+      - name: Run Samba smoke tests against the candidate digest
+        run: bash tests/smoke.sh
+
+      - name: Export image for socketless vulnerability scanning
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker image save --output "$RUNNER_TEMP/samba-image.tar" local/samba:test
+
+      - name: Gate on fixable HIGH and CRITICAL vulnerabilities
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/samba-image.tar:/image.tar:ro" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image \
+              --input /image.tar \
+              --exit-code 1 \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --scanners vuln \
+              --pkg-types os \
+              --no-progress
+
+      - name: Report all HIGH and CRITICAL vulnerabilities
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/samba-image.tar:/image.tar:ro" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image \
+              --input /image.tar \
+              --exit-code 0 \
+              --severity HIGH,CRITICAL \
+              --scanners vuln \
+              --pkg-types os \
+              --no-progress
+
+      - name: Pull exact arm64 image from the validated candidate
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          PLATFORM_DIGEST: ${{ steps.platforms.outputs.arm64_digest }}
+        run: |
+          docker pull "${IMAGE}@${PLATFORM_DIGEST}"
+          docker tag "${IMAGE}@${PLATFORM_DIGEST}" local/samba:arm64-test
+          test "$(docker image inspect -f '{{.Architecture}}' local/samba:arm64-test)" = "arm64"
+
+      # This runs after every amd64 assertion. smoke.sh retags its selected
+      # arm64 image as local/samba:test, so no amd64-dependent step follows it.
+      - name: Run minimal arm64 smoke tests through QEMU
+        env:
+          SAMBA_SMOKE_SCOPE: minimal
+          SAMBA_TEST_IMAGE: local/samba:arm64-test
+        run: bash tests/smoke.sh
+
+      - name: Promote the validated manifest without rebuilding
+        env:
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+          IMAGE: ${{ steps.image.outputs.image }}
+          FULL_SHA: ${{ steps.image.outputs.full_sha }}
+          LATEST: ${{ steps.image.outputs.latest }}
+        run: |
+          source_ref="${IMAGE}@${DIGEST}"
+          docker buildx imagetools create \
+            --tag "$FULL_SHA" \
+            --tag "$LATEST" \
+            "$source_ref"
+
+          for promoted_ref in "$FULL_SHA" "$LATEST"; do
+            promoted_digest="$(docker buildx imagetools inspect "$promoted_ref" --format '{{.Manifest.Digest}}')"
+            if [ "$promoted_digest" != "$DIGEST" ]; then
+              echo "Expected $promoted_ref to resolve to $DIGEST, got $promoted_digest" >&2
+              exit 1
+            fi
+          done

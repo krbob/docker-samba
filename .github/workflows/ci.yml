@@ -321,3 +321,32 @@ jobs:
               exit 1
             fi
           done
+
+  test:
+    name: test
+    if: ${{ always() }}
+    needs:
+      - quality
+      - test-local
+      - publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Verify the event-specific test path
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          LOCAL_RESULT: ${{ needs.test-local.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          if [ "$EVENT_NAME" = push ] && [ "$EVENT_REF" = refs/heads/main ]; then
+            test "$PUBLISH_RESULT" = success
+            test "$LOCAL_RESULT" = skipped
+          else
+            test "$LOCAL_RESULT" = success
+            test "$PUBLISH_RESULT" = skipped
+          fi

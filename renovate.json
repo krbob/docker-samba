@@ -1,6 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  "ignoreTests": false,
   "customManagers": [
     {
       "customType": "regex",
@@ -25,21 +29,6 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
-    }
-  ],
-  "packageRules": [
-    {
-      "description": "Automerge digest and patch updates after CI passes",
-      "matchUpdateTypes": ["digest", "patch"],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": false,
-      "ignoreTests": false
-    },
-    {
-      "description": "Require manual review for minor and major updates",
-      "matchUpdateTypes": ["minor", "major"],
-      "automerge": false
     }
   ]
 }

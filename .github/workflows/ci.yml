@@ -141,7 +141,6 @@ jobs:
               --no-progress
 
       - name: Report all HIGH and CRITICAL vulnerabilities
-        continue-on-error: true
         run: |
           docker run --rm \
             -v "$RUNNER_TEMP/samba-image.tar:/image.tar:ro" \
@@ -289,7 +288,6 @@ jobs:
               --no-progress
 
       - name: Report all HIGH and CRITICAL vulnerabilities
-        continue-on-error: true
         run: |
           docker run --rm \
             -v "$RUNNER_TEMP/samba-image.tar:/image.tar:ro" \

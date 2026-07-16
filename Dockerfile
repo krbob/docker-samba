@@ -1,6 +1,6 @@
 FROM debian:13.5-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2 AS s6-downloader
 
-ARG S6_OVERLAY_VERSION=3.2.3.1
+ARG S6_OVERLAY_VERSION=3.2.3.2
 WORKDIR /tmp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -18,7 +18,10 @@ concurrency:
 
 env:
   ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+  BINFMT_IMAGE: tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+  BUILDKIT_IMAGE: moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f
   HADOLINT_IMAGE: hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e
+  SBOM_SCANNER_IMAGE: docker/buildkit-syft-scanner:stable-1@sha256:79e7b013cbec16bbb436f312819a49a4a57752b2270c1a9332ae1a10fcc82a68
   SHELLCHECK_IMAGE: koalaman/shellcheck:stable@sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d
   TRIVY_IMAGE: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
 
@@ -92,9 +95,15 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+        with:
+          image: ${{ env.BINFMT_IMAGE }}
+          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        with:
+          driver-opts: |
+            image=${{ env.BUILDKIT_IMAGE }}
 
       - name: Build amd64 test image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -202,9 +211,15 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+        with:
+          image: ${{ env.BINFMT_IMAGE }}
+          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        with:
+          driver-opts: |
+            image=${{ env.BUILDKIT_IMAGE }}
 
       # A registry-backed candidate is intentional. The classic Docker image store
       # cannot load a multi-platform index with attestations. Keeping this immutable
@@ -216,7 +231,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          sbom: true
+          sbom: generator=${{ env.SBOM_SCANNER_IMAGE }}
           provenance: mode=max
           tags: ${{ steps.image.outputs.candidate }}
           build-args: |

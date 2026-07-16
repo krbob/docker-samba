@@ -16,12 +16,12 @@
     },
     {
       "customType": "regex",
-      "description": "Update digest-pinned CI tool images",
+      "description": "Update digest-pinned CI and build helper images",
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/[^/]+\\.ya?ml$/"
       ],
       "matchStrings": [
-        "(?:ACTIONLINT_IMAGE|HADOLINT_IMAGE|SHELLCHECK_IMAGE|TRIVY_IMAGE):\\s*(?<depName>rhysd/actionlint|hadolint/hadolint|koalaman/shellcheck|aquasec/trivy):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+        "(?:ACTIONLINT_IMAGE|BINFMT_IMAGE|BUILDKIT_IMAGE|HADOLINT_IMAGE|SBOM_SCANNER_IMAGE|SHELLCHECK_IMAGE|TRIVY_IMAGE):\\s*(?<depName>rhysd/actionlint|tonistiigi/binfmt|moby/buildkit|hadolint/hadolint|docker/buildkit-syft-scanner|koalaman/shellcheck|aquasec/trivy):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"

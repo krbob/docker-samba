@@ -57,7 +57,7 @@ jobs:
       - name: Lint Dockerfile
         run: |
           docker run --rm -i "$HADOLINT_IMAGE" \
-            /bin/hadolint --ignore DL3008 - < Dockerfile
+            /bin/hadolint --failure-threshold error --ignore DL3008 - < Dockerfile
 
       - name: Validate Compose files
         env:

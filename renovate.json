@@ -25,7 +25,7 @@
         "/^\\.github\\/workflows\\/[^/]+\\.ya?ml$/"
       ],
       "matchStrings": [
-        "(?:ACTIONLINT_IMAGE|BINFMT_IMAGE|BUILDKIT_IMAGE|HADOLINT_IMAGE|SBOM_SCANNER_IMAGE|SHELLCHECK_IMAGE|TRIVY_IMAGE):\\s*(?<depName>rhysd/actionlint|tonistiigi/binfmt|moby/buildkit|hadolint/hadolint|docker/buildkit-syft-scanner|koalaman/shellcheck|aquasec/trivy):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+        "(?:ACTIONLINT_IMAGE|BINFMT_IMAGE|BUILDKIT_IMAGE|HADOLINT_IMAGE|SHELLCHECK_IMAGE):\\s*(?<depName>rhysd/actionlint|tonistiigi/binfmt|moby/buildkit|hadolint/hadolint|koalaman/shellcheck):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"

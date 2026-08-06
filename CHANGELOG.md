@@ -36,6 +36,8 @@ continuously published line; use a `sha-*` image or digest for an exact build.
 
 ### Added
 
+- Added `SAMBA_READY_INTERFACE` and `SAMBA_READY_TIMEOUT` so host-network
+  deployments can wait for DHCP and healthcheck the selected LAN address.
 - Added separate Compose overrides for local builds, read-only guest access,
   and trusted-LAN discovery.
 - Added `MANAGE_SHARE_PERMISSIONS` for prepared and read-only mounts.
@@ -65,6 +67,8 @@ continuously published line; use a `sha-*` image or digest for an exact build.
 
 ### Fixed
 
+- Host-network discovery deployments no longer report healthy when Samba
+  started before the selected LAN interface received its IPv4 address.
 - `Thumbs.db` is now covered by the veto-file rules in addition to
   `.Thumbs.db`.
 - Recycle exclusions now affect actual delete behavior rather than only the

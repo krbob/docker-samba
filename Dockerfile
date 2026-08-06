@@ -38,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       samba \
       samba-vfs-modules \
       smbclient \
+      iproute2 \
       wsdd2 \
       avahi-daemon \
       tzdata \

@@ -13,6 +13,7 @@ COMPOSE_CONTAINER=""
 
 declare -a CONTAINERS=()
 declare -a VOLUMES=()
+declare -a NETWORKS=()
 declare -a TEMP_DIRS=()
 LAST_CONTAINER=""
 LAST_VOLUME=""
@@ -51,6 +52,9 @@ cleanup() {
   done
   for path in "${VOLUMES[@]}"; do
     docker volume rm "${path}" >/dev/null 2>&1
+  done
+  for path in "${NETWORKS[@]}"; do
+    docker network rm "${path}" >/dev/null 2>&1
   done
   for path in "${TEMP_DIRS[@]}"; do
     if ! rm -rf "${path}" >/dev/null 2>&1; then
@@ -372,6 +376,63 @@ printf '%s\n' "${config}" | grep -Fq 'bind interfaces only = Yes' \
   || fail "bind interfaces only was not enabled"
 remove_container "${name}"
 remove_volume "${volume}"
+
+log "Delayed interface readiness and external healthcheck"
+new_volume delayed-interface
+volume="${LAST_VOLUME}"
+network="${PREFIX}-delayed-ready"
+docker network create "${network}" >/dev/null
+NETWORKS+=("${network}")
+start_container delayed-interface \
+  -e GUEST_OK=1 \
+  -e SAMBA_INTERFACES='lo eth1' \
+  -e SAMBA_BIND_INTERFACES_ONLY=1 \
+  -e SAMBA_READY_INTERFACE=eth1 \
+  -e SAMBA_READY_TIMEOUT=15 \
+  -v "${volume}:/share"
+name="${LAST_CONTAINER}"
+sleep 2
+[ "$(docker inspect -f '{{.State.Status}}' "${name}")" = "running" ] \
+  || fail "${name} exited instead of waiting for eth1"
+if docker top "${name}" -eo pid,cmd | grep -q 'smbd --foreground'; then
+  fail "smbd started before eth1 acquired an address"
+fi
+assert_log_contains "${name}" 'Waiting up to 15s for eth1'
+docker network connect "${network}" "${name}"
+wait_healthy "${name}"
+docker exec "${name}" /etc/samba-healthcheck
+docker network disconnect "${network}" "${name}"
+set +e
+health_output="$(docker exec "${name}" /etc/samba-healthcheck 2>&1)"
+health_rc=$?
+set -e
+printf '%s\n' "${health_output}"
+[ "${health_rc}" -ne 0 ] || fail "healthcheck passed without the ready interface"
+printf '%s\n' "${health_output}" | grep -Fq "SAMBA_READY_INTERFACE 'eth1' has no global IPv4 address" \
+  || fail "healthcheck did not report the missing ready interface"
+remove_container "${name}"
+remove_volume "${volume}"
+docker network rm "${network}" >/dev/null
+
+log "Ready interface timeout fails startup"
+start_container ready-interface-timeout \
+  --network none \
+  -e GUEST_OK=1 \
+  -e SAMBA_READY_INTERFACE=eth0 \
+  -e SAMBA_READY_TIMEOUT=2
+name="${LAST_CONTAINER}"
+wait_exited "${name}"
+assert_log_contains "${name}" "SAMBA_READY_INTERFACE 'eth0' did not acquire a global IPv4 address within 2s"
+remove_container "${name}"
+
+log "Ready interface timeout must be positive"
+start_container ready-interface-zero-timeout \
+  -e GUEST_OK=1 \
+  -e SAMBA_READY_TIMEOUT=0
+name="${LAST_CONTAINER}"
+wait_exited "${name}"
+assert_log_contains "${name}" 'SAMBA_READY_TIMEOUT must be greater than zero'
+remove_container "${name}"
 
 log "Wide-link opt-in"
 new_volume symlinks

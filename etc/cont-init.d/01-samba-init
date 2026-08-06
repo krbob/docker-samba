@@ -13,6 +13,8 @@ set -e
 : "${LOG_LEVEL:=1}"
 : "${SAMBA_INTERFACES:=}"
 : "${SAMBA_BIND_INTERFACES_ONLY:=0}"
+: "${SAMBA_READY_INTERFACE:=}"
+: "${SAMBA_READY_TIMEOUT:=60}"
 : "${SMB_ENCRYPT:=}"
 : "${SMB_SIGNING:=}"
 : "${SAMBA_PASSWORD:=}"
@@ -194,6 +196,39 @@ validate_allowed_interfaces() {
   done
 }
 
+validate_interface_name() {
+  name="$1"
+  value="$2"
+
+  validate_single_line "${name}" "${value}"
+  [ -z "${value}" ] && return
+  case "${value}" in
+    *[!A-Za-z0-9_.:-]*) fail "${name} must be one interface name" ;;
+  esac
+  [ "${#value}" -le 15 ] || fail "${name} must not exceed 15 characters"
+}
+
+wait_for_ready_interface() {
+  [ -n "${SAMBA_READY_INTERFACE}" ] || return 0
+
+  elapsed=0
+  echo "Waiting up to ${SAMBA_READY_TIMEOUT}s for ${SAMBA_READY_INTERFACE} to acquire a global IPv4 address"
+  while [ "${elapsed}" -lt "${SAMBA_READY_TIMEOUT}" ]; do
+    ready_ipv4="$(
+      ip -o -4 address show dev "${SAMBA_READY_INTERFACE}" scope global 2>/dev/null \
+        | awk 'NR == 1 { sub(/\/.*/, "", $4); print $4 }'
+    )"
+    if [ -n "${ready_ipv4}" ]; then
+      echo "Interface ${SAMBA_READY_INTERFACE} is ready with IPv4 ${ready_ipv4}"
+      return
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  fail "SAMBA_READY_INTERFACE '${SAMBA_READY_INTERFACE}' did not acquire a global IPv4 address within ${SAMBA_READY_TIMEOUT}s"
+}
+
 interfaces_include_loopback() {
   case " ${SAMBA_INTERFACES} " in
     *" lo "* | *" 127."* | *" localhost "* | *" ::1 "*) return 0 ;;
@@ -326,6 +361,10 @@ validate_single_line RECYCLE_EXCLUDE_DIR "${RECYCLE_EXCLUDE_DIR}"
 validate_single_line SAMBA_INTERFACES "${SAMBA_INTERFACES}"
 validate_single_line SAMBA_HOSTS_ALLOW "${SAMBA_HOSTS_ALLOW}"
 validate_allowed_interfaces "${ALLOWED_INTERFACES}"
+validate_interface_name SAMBA_READY_INTERFACE "${SAMBA_READY_INTERFACE}"
+validate_unsigned_integer SAMBA_READY_TIMEOUT "${SAMBA_READY_TIMEOUT}"
+[ "${SAMBA_READY_TIMEOUT}" -gt 0 ] 2>/dev/null \
+  || fail "SAMBA_READY_TIMEOUT must be greater than zero"
 validate_enum SMB_ENCRYPT "${SMB_ENCRYPT}" "default if_required desired required off"
 validate_enum SMB_SIGNING "${SMB_SIGNING}" "default auto mandatory disabled"
 load_samba_password
@@ -445,6 +484,8 @@ if ! testparm -s "${SMB_CONF_TMP}" >/dev/null 2>&1; then
   testparm -s "${SMB_CONF_TMP}" >&2 || true
   fail "Generated Samba configuration is invalid"
 fi
+
+wait_for_ready_interface
 
 # All validation has completed. System and volume mutations start here.
 ensure_samba_identity

@@ -36,6 +36,8 @@ The supplied `docker-compose.discovery.yml` override:
 - switches the service to host networking and removes the bridge port mapping;
 - enables WSD for Windows and mDNS/DNS-SD for macOS and Linux;
 - limits Samba, WSDD2, and Avahi to the selected interface;
+- waits for the selected interface to receive IPv4 before Samba starts and
+  verifies that address in the healthcheck;
 - limits Samba clients to the selected LAN CIDR and loopback;
 - leaves LLMNR disabled by default.
 
@@ -64,6 +66,24 @@ host networking can be unavailable or behave differently under Docker Desktop,
 rootless Docker, VPNs, or routed and VLAN-separated networks. Use direct SMB
 access in those environments unless discovery has been verified on the real
 LAN.
+
+The readiness wait prevents a common boot race with DHCP: Docker can restore a
+host-network container after the interface exists but before its IPv4 address
+has arrived. If the address is not ready within `SAMBA_READY_TIMEOUT`, startup
+fails and the Compose restart policy retries it.
+
+## Routed VPN access
+
+Point-to-point interfaces such as WireGuard are not broadcast-capable and are
+not suitable entries in Samba's restricted `interfaces` list. Do not add
+`wg0` to `SAMBA_INTERFACES`.
+
+Instead, route the selected LAN address through the VPN and use the same SMB
+URL on both networks. For example, a WireGuard peer with a route for
+`192.0.2.10/32` connects to `smb://192.0.2.10/public`. Keep the VPN client CIDR
+in `SAMBA_HOSTS_ALLOW` so Samba accepts the tunneled source address. Discovery
+multicast is not required and usually does not cross the VPN; use the IP or a
+unicast DNS name.
 
 ## Protocols and firewall ports
 

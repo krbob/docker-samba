@@ -106,6 +106,8 @@ services:
 | `LOG_LEVEL` | `1` | Samba log level from `0` through `10` |
 | `SAMBA_INTERFACES` | unset | Samba listener interfaces or addresses, for example `lo eno1` |
 | `SAMBA_BIND_INTERFACES_ONLY` | `false` | Bind Samba only to `SAMBA_INTERFACES`; loopback must be included for the healthcheck |
+| `SAMBA_READY_INTERFACE` | unset | One Linux interface that must have a global IPv4 address before Samba starts and that the healthcheck must reach |
+| `SAMBA_READY_TIMEOUT` | `60` | Positive number of seconds to wait for `SAMBA_READY_INTERFACE` |
 | `SAMBA_HOSTS_ALLOW` | unset | Samba client allow-list, for example `192.0.2.0/24 127.0.0.0/8` |
 | `SMB_ENCRYPT` | unset | `default`, `if_required`, `desired`, `required`, or `off` |
 | `SMB_SIGNING` | unset | `default`, `auto`, `mandatory`, or `disabled` |
@@ -125,7 +127,14 @@ modified.
 
 Reserved share names are `.`, `..`, `global`, `homes`, and `printers`, matched
 case-insensitively. `ALLOWED_INTERFACES` accepts non-empty interface names made
-from ASCII letters, digits, `_`, `-`, `.`, and `:`.
+from ASCII letters, digits, `_`, `-`, `.`, and `:`. `SAMBA_READY_INTERFACE`
+accepts one name using the same character set and Linux's 15-character limit.
+
+When `SAMBA_READY_INTERFACE` is set, startup waits for its first global IPv4
+address before creating the Samba identity or changing the share. A timeout
+stops the container with a clear error; a restart policy can retry startup.
+The healthcheck then connects through the interface's current IPv4 address
+instead of loopback, so a loopback-only listener cannot report healthy.
 
 ## Storage and permissions
 

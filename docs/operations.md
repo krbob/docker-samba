@@ -19,6 +19,12 @@ authentication mode, unreadable secret, missing prepared share path, or UID/GID
 collision. The startup log reports the failing variable without printing the
 password.
 
+When `SAMBA_READY_INTERFACE` is configured, startup also waits for that
+interface to receive a global IPv4 address. The healthcheck tests the share on
+the interface address, not only on loopback. A readiness timeout usually means
+the container started before DHCP completed, the interface name is wrong, or
+the host network never came online.
+
 Use `docker compose up -d` after changing Compose configuration or environment
 values. `docker compose restart` reuses the existing container configuration
 and does not apply those changes.
@@ -147,6 +153,13 @@ a native local filesystem before treating it as a Samba configuration issue.
 
 This is a discovery or multicast issue rather than a file-server failure.
 Follow the checklist in [Networking and discovery](networking.md).
+
+### Loopback works but LAN access is refused
+
+Compare `SAMBA_INTERFACES` with the listener addresses reported by
+`ss -ltn 'sport = :445'`. For host-network deployments using DHCP, set
+`SAMBA_READY_INTERFACE` to the physical LAN interface and recreate the
+container. Do not rely on a loopback-only healthcheck to validate LAN access.
 
 ## Related runbooks
 

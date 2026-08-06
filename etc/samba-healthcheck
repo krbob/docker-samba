@@ -4,8 +4,28 @@ set -eu
 
 share="${SHARE_NAME:-public}"
 auth_file="/run/samba/healthcheck.auth"
-share_url="//127.0.0.1/${share}"
+ready_interface="${SAMBA_READY_INTERFACE:-}"
 guest_ok="$(printf '%s' "${GUEST_OK:-0}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+
+if [ -n "${ready_interface}" ]; then
+  case "${ready_interface}" in
+    *[!A-Za-z0-9_.:-]*)
+      echo "SAMBA_READY_INTERFACE must be one interface name" >&2
+      exit 1
+      ;;
+  esac
+  ready_ipv4="$(
+    ip -o -4 address show dev "${ready_interface}" scope global 2>/dev/null \
+      | awk 'NR == 1 { sub(/\/.*/, "", $4); print $4 }'
+  )"
+  if [ -z "${ready_ipv4}" ]; then
+    echo "SAMBA_READY_INTERFACE '${ready_interface}' has no global IPv4 address" >&2
+    exit 1
+  fi
+  share_url="//${ready_ipv4}/${share}"
+else
+  share_url="//127.0.0.1/${share}"
+fi
 
 case "${guest_ok}" in
   1 | true | yes | on) guest_ok=1 ;;

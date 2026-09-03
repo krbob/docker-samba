@@ -1,10 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "automerge": true,
-  "automergeType": "pr",
-  "platformAutomerge": false,
-  "ignoreTests": false,
+  "extends": ["github>krbob/renovate-config:continuous"],
   "customManagers": [
     {
       "customType": "regex",

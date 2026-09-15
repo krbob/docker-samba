@@ -104,7 +104,7 @@ jobs:
             image=${{ env.BUILDKIT_IMAGE }}
 
       - name: Build amd64 test image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/amd64
@@ -120,7 +120,7 @@ jobs:
         run: bash tests/smoke.sh
 
       - name: Build arm64 runtime image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/arm64
@@ -191,7 +191,7 @@ jobs:
       # candidate tag also leaves an audit trail for a build that failed validation.
       - name: Build and push multiarch candidate once
         id: candidate
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

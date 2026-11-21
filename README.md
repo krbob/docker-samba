@@ -74,6 +74,24 @@ trailing whitespace. Copy `.env.example` to `.env` to persist Compose controls
 such as the image tag, bind address, or secret-file path. Do not store the
 Samba password itself in `.env`.
 
+### Local SMB share with Apple container
+
+On Apple silicon, use the single-line password file created above and a dedicated named volume.
+Mount a directory containing only the Samba password. Port 1445 leaves the Mac's own SMB port available.
+
+```bash
+container system start
+container volume create samba-apple-data
+container run -d --rm --name samba-apple -p 127.0.0.1:1445:445 \
+  -v samba-apple-data:/share -v "$PWD/.secrets:/run/secrets:ro" \
+  -e SAMBA_PASSWORD_FILE=/run/secrets/samba_password ghcr.io/krbob/samba:latest
+container exec samba-apple timeout 30 sh -c 'until /etc/samba-healthcheck; do sleep 1; done'
+```
+
+Once the health check succeeds, connect to `smb://127.0.0.1:1445/public` as `samba`.
+Stop the server with `container stop --time 30 samba-apple`. Reuse the volume on the next run to keep the files.
+The Linux host-network instructions below cover LAN discovery through WSD and mDNS.
+
 ## Choose network exposure
 
 | Mode | Reachability | Discovery | Intended host |
